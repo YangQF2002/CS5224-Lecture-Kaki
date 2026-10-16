@@ -1,0 +1,155 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: LectureKaki development authentication with Cognito and an NUS email gate.
+
+Parameters:
+  DomainPrefix:
+    Type: String
+    Description: Unique Cognito hosted-UI domain prefix in ap-southeast-1.
+    MinLength: 1
+    MaxLength: 63
+    AllowedPattern: "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+  CallbackURLs:
+    Type: CommaDelimitedList
+    Description: Exact approved callback URLs; HTTPS except for local development.
+    Default: http://localhost:8000/docs/oauth2-redirect
+  LogoutURLs:
+    Type: CommaDelimitedList
+    Description: Exact approved destinations after hosted sign-out.
+    Default: http://localhost:8000/docs
+
+Resources:
+  PreSignUpLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 14
+
+  PreSignUpRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: write-signup-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt PreSignUpLogGroup.Arn
+
+  PreSignUpFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: Reject registration outside the u.nus.edu email domain.
+      Runtime: python3.14
+      Handler: handler.lambda_handler
+      # AWS CLI packages only this directory, relative to this template.
+      Code: ../backend/lambdas/pre_signup/
+      Role: !GetAtt PreSignUpRole.Arn
+      MemorySize: 128
+      Timeout: 3
+      LoggingConfig:
+        LogFormat: Text
+        LogGroup: !Ref PreSignUpLogGroup
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolTier: LITE
+      UsernameAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: false
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      # Sends Cognito's confirmation email; the trigger must not auto-verify it.
+      AutoVerifiedAttributes:
+        - email
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      MfaConfiguration: "OFF"
+      LambdaConfig:
+        PreSignUp: !GetAtt PreSignUpFunction.Arn
+
+  PreSignUpPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PreSignUpFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !GetAtt UserPool.Arn
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      SupportedIdentityProviders:
+        - COGNITO
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+      CallbackURLs: !Ref CallbackURLs
+      LogoutURLs: !Ref LogoutURLs
+      # Avoid the default SRP/custom SDK login flows. Hosted login uses OAuth.
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+      ReadAttributes:
+        - email
+        - email_verified
+      # Email can be supplied at signup, but the pool schema prevents changes.
+      WriteAttributes:
+        - email
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      AccessTokenValidity: 15
+      IdTokenValidity: 15
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPool
+      Domain: !Ref DomainPrefix
+      ManagedLoginVersion: 1
+
+Outputs:
+  Region:
+    Description: AWS_REGION
+    Value: !Ref AWS::Region
+  UserPoolId:
+    Description: COGNITO_USER_POOL_ID
+    Value: !Ref UserPool
+  ClientId:
+    Description: COGNITO_CLIENT_ID (public)
+    Value: !Ref UserPoolClient
+  HostedDomain:
+    Description: Cognito hosted-UI origin for browser integration.
+    Value: !Sub https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com
