@@ -47,6 +47,9 @@ PUBLIC_HOLIDAYS = {
     date(2027, 5, 20): "Vesak Day",
 }
 
+# Classes end at 14:00 on Chinese New Year's Eve.
+EARLY_CLOSURES = {date(2027, 2, 5): "1400"}
+
 
 def semester_for(today: date) -> Semester:
     """Keep Semester 2 through the summer; special terms are not ingested."""

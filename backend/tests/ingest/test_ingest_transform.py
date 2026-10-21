@@ -1,5 +1,6 @@
 import pytest
 
+from ingest.academic_calendar import SEMESTERS
 from ingest.transform import (
     build_modules,
     build_sessions,
@@ -65,6 +66,34 @@ def test_room_change_by_week(sessions):
     assert len(laj) == 11  # 13 Mondays minus National Day and Deepavali (observed)
     assert {s["venue"] for s in laj if s["date"] < "2026-09-21"} == {"LT19"}
     assert {s["venue"] for s in laj if s["date"] > "2026-09-21"} == {"LT14"}
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "expected_end"),
+    [
+        pytest.param("1000", "1200", "12:00", id="before-cutoff"),
+        pytest.param("1200", "1400", "14:00", id="ends-at-cutoff"),
+        pytest.param("1300", "1500", "14:00", id="crosses-cutoff"),
+        pytest.param("1400", "1600", None, id="starts-at-cutoff"),
+        pytest.param("1600", "1800", None, id="after-cutoff"),
+    ],
+)
+def test_cny_eve_cutoff_only_affects_that_date(module_info, start, end, expected_end):
+    lesson = {
+        "moduleCode": "SC3210",
+        "lessonType": "Lecture",
+        "classNo": "1",
+        "weeks": [4, 5],
+        "startTime": start,
+        "endTime": end,
+    }
+    venues = {"UTSRC-GLR": [{"day": "Friday", "classes": [lesson]}]}
+    sessions = build_sessions(module_info, venues, SEMESTERS[("2026-2027", 2)])
+
+    expected = [("2027-02-12", f"{end[:2]}:{end[2:]}")]
+    if expected_end is not None:
+        expected.insert(0, ("2027-02-05", expected_end))
+    assert [(s["date"], s["endTime"]) for s in sessions] == expected
 
 
 def test_duplicate_slot_keeps_longer_entry(sessions):

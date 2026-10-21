@@ -1,6 +1,6 @@
 # Lecture data
 
-The ingestion Lambda turns NUSMods module and timetable data into static JSON for the frontend to read through CloudFront. It supports AY2026/27 Semesters 1–2 and excludes university holidays.
+The ingestion Lambda turns NUSMods module and timetable data into static JSON for the frontend to read through CloudFront. It supports AY2026/27 Semesters 1–2, excludes university holidays and applies the 14:00 class cut-off on Chinese New Year's Eve (5 February 2027).
 
 Only the NUSMods lesson type `Lecture` is included; other types and NUS-ISS courses are excluded. Personal timetable import must include tutorials, labs and other commitments separately when calculating free time.
 

@@ -4,7 +4,7 @@ import re
 from collections import defaultdict
 from datetime import date
 
-from ingest.academic_calendar import Semester, class_dates
+from ingest.academic_calendar import EARLY_CLOSURES, Semester, class_dates
 from ingest.lesson_types import LESSON_TYPE_CODES
 from ingest.venues import building_for, is_online
 
@@ -57,6 +57,11 @@ def build_sessions(
                 if module["faculty"] in EXCLUDED_FACULTIES:
                     continue
                 for on in class_dates(semester, day["day"], lesson["weeks"]):
+                    end = lesson["endTime"]
+                    if cutoff := EARLY_CLOSURES.get(on):
+                        if lesson["startTime"] >= cutoff:
+                            continue
+                        end = min(end, cutoff)
                     key = (
                         module_code,
                         lesson["lessonType"],
@@ -66,7 +71,7 @@ def build_sessions(
                         venue,
                     )
                     value = (
-                        lesson["endTime"],
+                        end,
                         lesson.get("size") or 0,
                         tuple(cross_listed),
                     )
