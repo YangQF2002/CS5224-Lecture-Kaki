@@ -1,4 +1,4 @@
-"""Download the two NUSMods files"""
+"""Download NUSMods module and venue data."""
 
 import json
 import time
@@ -21,7 +21,7 @@ def fetch_json(url: str, *, attempts: int = 3, timeout: float = 60) -> Any:
 
 
 def fetch_semester(acad_year: str, semester: int) -> tuple[list[dict], dict]:
-    """(moduleInfo, venueInformation) for one semester."""
+    """Return moduleInfo and venueInformation for one semester."""
     module_info = fetch_json(f"{BASE_URL}/{acad_year}/moduleInfo.json")
     venue_info = fetch_json(
         f"{BASE_URL}/{acad_year}/semesters/{semester}/venueInformation.json"

@@ -1,16 +1,18 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from unittest.mock import Mock
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 from moto import mock_aws
 
 from handlers import ingest as ingest_handler
+from ingest.academic_calendar import week_label
 from ingest.publish import SuspiciousDataError, publish
 from ingest.transform import build_modules, build_sessions
 
 BUCKET = "lecturekaki-test-web"
-PREFIX = "lectures/2026-2027/sem-1"
 NOW = datetime(2026, 10, 18, 19, 0, tzinfo=UTC)
 
 
@@ -36,98 +38,188 @@ def read(s3, key):
     return json.load(s3.get_object(Bucket=BUCKET, Key=key)["Body"])
 
 
-def keys(s3):
-    return {o["Key"] for o in s3.list_objects_v2(Bucket=BUCKET)["Contents"]}
+def objects(s3, prefix=""):
+    return {
+        item["Key"]: s3.get_object(Bucket=BUCKET, Key=item["Key"])["Body"].read()
+        for page in s3.get_paginator("list_objects_v2").paginate(
+            Bucket=BUCKET, Prefix=prefix
+        )
+        for item in page.get("Contents", [])
+    }
 
 
-def test_first_run_writes_everything(s3, sem1, data):
+def test_first_run_publishes_complete_snapshot(s3, sem1, data):
     sessions, modules = data
     result = publish(s3, BUCKET, sem1, sessions, modules, NOW)
+    prefix = result["path"]
+    index = read(s3, f"{prefix}index.json")
 
-    index = read(s3, f"{PREFIX}/index.json")
+    assert prefix.startswith("lectures/2026-2027/sem-1/")
+    assert read(s3, "lectures/current.json")["path"] == prefix
     assert index["sessionCount"] == len(sessions)
     assert index["lessonTypes"] == {"Lecture": "LEC"}
     assert index["generatedAt"] == "2026-10-18T19:00:00Z"
-    assert {f"{PREFIX}/days/{d}.json" for d in index["days"]} <= keys(s3)
-    assert {f"{PREFIX}/weeks/{w['week']}.json" for w in index["weeks"]} <= keys(s3)
-
-    day = read(s3, f"{PREFIX}/days/2026-10-13.json")
-    assert day["week"] == "week-09"
-    assert "SC3210-LEC-1@2026-10-13" in {s["id"] for s in day["sessions"]}
-
-    week = read(s3, f"{PREFIX}/weeks/week-09.json")
-    assert (week["startDate"], week["endDate"]) == ("2026-10-12", "2026-10-18")
-    assert {s["date"] for s in week["sessions"]} <= {
-        f"2026-10-{d}" for d in range(12, 19)
+    assert index["days"] == sorted({s["date"] for s in sessions})
+    assert {week["week"] for week in index["weeks"]} == {
+        week_label(sem1, date.fromisoformat(s["date"])) for s in sessions
     }
+    for day in index["days"]:
+        assert read(s3, f"{prefix}days/{day}.json")["sessions"] == [
+            s for s in sessions if s["date"] == day
+        ]
+    for week in index["weeks"]:
+        document = read(s3, f"{prefix}weeks/{week['week']}.json")
+        assert (document["week"], document["startDate"], document["endDate"]) == (
+            week["week"],
+            week["startDate"],
+            week["endDate"],
+        )
+        expected = [
+            s for s in sessions if week["startDate"] <= s["date"] <= week["endDate"]
+        ]
+        assert document["sessions"] == expected
+        assert week["sessionCount"] == len(expected)
+    assert read(s3, f"{prefix}modules.json")["items"] == modules
+    assert (
+        s3.head_object(Bucket=BUCKET, Key="lectures/current.json")["CacheControl"]
+        == "no-cache"
+    )
 
-    assert read(s3, "lectures/current.json")["path"] == f"{PREFIX}/"
-    assert read(s3, f"{PREFIX}/modules.json")["items"]
-    assert result["written"] == result["files"] + 1
-    assert result["deleted"] == 0
 
-
-def test_rerun_on_same_data_writes_nothing(s3, sem1, data):
+def test_republication_switches_pointer_and_preserves_previous_snapshot(s3, sem1, data):
     sessions, modules = data
-    publish(s3, BUCKET, sem1, sessions, modules, NOW)
-    result = publish(s3, BUCKET, sem1, sessions, modules, NOW.replace(day=19))
-
-    assert result["written"] == 0
-    assert read(s3, f"{PREFIX}/index.json")["generatedAt"] == "2026-10-18T19:00:00Z"
-
-
-def test_dates_that_disappear_are_deleted(s3, sem1, data):
-    sessions, modules = data
-    publish(s3, BUCKET, sem1, sessions, modules, NOW)
+    first = publish(s3, BUCKET, sem1, sessions, modules, NOW)
+    before = objects(s3, first["path"])
     remaining = [s for s in sessions if s["date"] != "2026-10-13"]
-    # Keep the drop small so the bad-data check doesn't fire.
-    result = publish(s3, BUCKET, sem1, remaining, modules, NOW)
+    second = publish(s3, BUCKET, sem1, remaining, modules, NOW)
 
-    assert f"{PREFIX}/days/2026-10-13.json" not in keys(s3)
-    assert result["deleted"] == 1
-    assert "2026-10-13" not in read(s3, f"{PREFIX}/index.json")["days"]
+    assert first["path"] != second["path"]
+    assert read(s3, "lectures/current.json")["path"] == second["path"]
+    assert objects(s3, first["path"]) == before
+    assert "2026-10-13" not in read(s3, f"{second['path']}index.json")["days"]
+    assert f"{second['path']}days/2026-10-13.json" not in objects(s3, second["path"])
 
 
-def test_big_drop_keeps_previous_files(s3, sem1, data):
+@pytest.mark.parametrize("failure", ["snapshot-file", "current-pointer"])
+def test_failed_upload_preserves_published_snapshot(
+    s3, sem1, data, monkeypatch, failure
+):
+    sessions, modules = data
+    first = publish(s3, BUCKET, sem1, sessions, modules, NOW)
+    pointer = read(s3, "lectures/current.json")
+    before = objects(s3, first["path"])
+    put = s3.put_object
+    calls = 0
+
+    def fail_upload(**kwargs):
+        nonlocal calls
+        calls += 1
+        if (failure == "snapshot-file" and calls == 2) or (
+            failure == "current-pointer" and kwargs["Key"] == "lectures/current.json"
+        ):
+            raise ClientError({"Error": {"Code": "ServiceUnavailable"}}, "PutObject")
+        return put(**kwargs)
+
+    monkeypatch.setattr(s3, "put_object", fail_upload)
+    changed = [{**s, "venue": "UPDATED"} for s in sessions]
+    with pytest.raises(ClientError):
+        publish(s3, BUCKET, sem1, changed, modules, NOW)
+
+    assert read(s3, "lectures/current.json") == pointer
+    assert objects(s3, first["path"]) == before
+
+
+def test_big_drop_preserves_all_previous_content(s3, sem1, data):
     sessions, modules = data
     publish(s3, BUCKET, sem1, sessions, modules, NOW)
-    before = keys(s3)
+    before = objects(s3)
 
     with pytest.raises(SuspiciousDataError):
         publish(s3, BUCKET, sem1, sessions[:10], modules, NOW)
 
-    assert keys(s3) == before
-    assert read(s3, f"{PREFIX}/index.json")["sessionCount"] == len(sessions)
+    assert objects(s3) == before
 
 
-def test_no_sessions_is_an_error(s3, sem1):
+def test_empty_dataset_does_not_write(s3, sem1):
     with pytest.raises(SuspiciousDataError):
         publish(s3, BUCKET, sem1, [], [], NOW)
+    assert objects(s3) == {}
 
 
-def test_handler(s3, monkeypatch, module_info, venue_info):
+def test_handler(s3, monkeypatch, module_info, venue_info, data):
     monkeypatch.setenv("WEB_BUCKET", BUCKET)
-    monkeypatch.setattr(
-        ingest_handler,
-        "fetch_semester",
-        lambda acad_year, semester: (module_info, venue_info),
-    )
-
+    fetch = Mock(return_value=(module_info, venue_info))
+    monkeypatch.setattr(ingest_handler, "fetch_semester", fetch)
     result = ingest_handler.handler({"date": "2026-10-19"}, None, s3=s3, now=NOW)
 
-    assert result["semester"] == "2026-2027/sem-1"
-    assert result["sessions"] > 0
-    assert f"{PREFIX}/index.json" in keys(s3)
+    fetch.assert_called_once_with("2026-2027", 1)
+    assert result["sessions"] == len(data[0])
+    assert read(s3, f"{result['path']}modules.json")["items"] == data[1]
 
 
-def test_scheduled_run_skips_when_not_due(s3, monkeypatch):
+@pytest.mark.parametrize(
+    "failure",
+    [
+        OSError("upstream unavailable"),
+        json.JSONDecodeError("invalid JSON", "<html>", 0),
+    ],
+    ids=["network-error", "invalid-json"],
+)
+def test_fetch_failure_preserves_existing_data(s3, sem1, data, monkeypatch, failure):
+    publish(s3, BUCKET, sem1, *data, NOW)
+    before = objects(s3)
+    monkeypatch.setattr(ingest_handler, "fetch_semester", Mock(side_effect=failure))
     monkeypatch.setenv("WEB_BUCKET", BUCKET)
 
-    def fail(*args):
-        raise AssertionError("should not fetch")
+    with pytest.raises(type(failure)):
+        ingest_handler.handler({"date": "2026-10-19"}, None, s3=s3, now=NOW)
 
-    monkeypatch.setattr(ingest_handler, "fetch_semester", fail)
-    # 19:00 UTC Sunday 18 Oct = 03:00 SGT Monday 19 Oct, week 10.
-    result = ingest_handler.handler({}, None, s3=s3, now=NOW)
+    assert objects(s3) == before
 
-    assert result == {"semester": "2026-2027/sem-1", "skipped": "not due on 2026-10-19"}
+
+def test_empty_catalogue_preserves_existing_data(
+    s3, sem1, data, venue_info, monkeypatch
+):
+    publish(s3, BUCKET, sem1, *data, NOW)
+    before = objects(s3)
+    monkeypatch.setattr(
+        ingest_handler, "fetch_semester", Mock(return_value=([], venue_info))
+    )
+    monkeypatch.setenv("WEB_BUCKET", BUCKET)
+
+    with pytest.raises(ValueError, match="empty module catalogue"):
+        ingest_handler.handler({"date": "2026-10-19"}, None, s3=s3, now=NOW)
+
+    assert objects(s3) == before
+
+
+@pytest.mark.parametrize(
+    ("now", "due"),
+    [
+        pytest.param(
+            datetime(2026, 10, 4, 19, tzinfo=UTC), True, id="first-monday-sgt"
+        ),
+        pytest.param(
+            datetime(2026, 10, 18, 19, tzinfo=UTC), False, id="later-monday-sgt"
+        ),
+    ],
+)
+def test_scheduled_run_uses_singapore_date(
+    s3, monkeypatch, module_info, venue_info, now, due
+):
+    monkeypatch.setenv("WEB_BUCKET", BUCKET)
+    fetch = Mock(return_value=(module_info, venue_info))
+    monkeypatch.setattr(ingest_handler, "fetch_semester", fetch)
+
+    result = ingest_handler.handler({}, None, s3=s3, now=now)
+
+    if due:
+        fetch.assert_called_once_with("2026-2027", 1)
+        assert read(s3, "lectures/current.json")["path"] == result["path"]
+    else:
+        fetch.assert_not_called()
+        assert objects(s3) == {}
+        assert result == {
+            "semester": "2026-2027/sem-1",
+            "skipped": "not due on 2026-10-19",
+        }

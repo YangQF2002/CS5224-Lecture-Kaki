@@ -1,17 +1,8 @@
-"""Run the ingest Lambda locally: live NUSMods data, in-memory S3 (moto).
-
-Nothing touches AWS. The handler runs twice to check that an unchanged second
-run writes nothing, then the fake bucket is copied to disk for inspection.
-
-    cd backend
-    poetry run python scripts/ingest_local.py                 # today's semester
-    poetry run python scripts/ingest_local.py --date 2027-02-01
-"""
+"""Generate lecture files locally using live NUSMods data and in-memory S3."""
 
 import argparse
 import json
 import os
-import shutil
 import sys
 from datetime import date
 from pathlib import Path
@@ -42,6 +33,10 @@ def main() -> None:
         help="where to copy the bucket contents (default: backend/out/ingest)",
     )
     args = parser.parse_args()
+    output = args.out.resolve()
+    output_root = (BACKEND / "out").resolve()
+    if output == output_root or not output.is_relative_to(output_root):
+        parser.error("--out must be a subdirectory of backend/out")
 
     os.environ["WEB_BUCKET"] = BUCKET
     with mock_aws():
@@ -52,22 +47,16 @@ def main() -> None:
         )
 
         event = {"date": args.date}
-        print(f"Run 1 {event}")
         print(json.dumps(handler(event, None, s3=s3), indent=2))
-        print("Run 2 (same data, expect written: 0)")
-        print(json.dumps(handler(event, None, s3=s3), indent=2))
-
-        if args.out.exists():
-            shutil.rmtree(args.out)
         count = 0
         for page in s3.get_paginator("list_objects_v2").paginate(Bucket=BUCKET):
             for obj in page.get("Contents", []):
-                path = args.out / obj["Key"]
+                path = output / obj["Key"]
                 path.parent.mkdir(parents=True, exist_ok=True)
                 body = s3.get_object(Bucket=BUCKET, Key=obj["Key"])["Body"].read()
                 path.write_bytes(body)
                 count += 1
-        print(f"Copied {count} files to {args.out}")
+        print(f"Copied {count} files to {output}")
 
 
 if __name__ == "__main__":

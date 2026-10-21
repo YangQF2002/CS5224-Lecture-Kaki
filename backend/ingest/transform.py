@@ -1,14 +1,13 @@
-"""Turn NUSMods moduleInfo + venueInformation into lecture sessions (pure functions)."""
+"""Transform NUSMods module and venue data into lecture sessions."""
 
 import re
 from collections import defaultdict
 from datetime import date
 
 from ingest.academic_calendar import Semester, class_dates
-from ingest.lesson_types import INCLUDED_LESSON_TYPES, LESSON_TYPE_CODES
+from ingest.lesson_types import LESSON_TYPE_CODES
 from ingest.venues import building_for, is_online
 
-# All-day NUS-ISS courses aren't lectures that can join by outsiders.
 EXCLUDED_FACULTIES = frozenset({"NUS-ISS"})
 
 _LEVEL = re.compile(r"[A-Z]+(\d)")
@@ -21,35 +20,41 @@ def module_level(module_code: str) -> int | None:
 
 
 def split_module_code(raw: str) -> tuple[str, list[str]]:
-    """Cross-listed classes come as 'CS2103T/\u200bCS2103': first code, then the rest."""
+    """Split cross-listed codes, removing embedded NUSMods zero-width spaces."""
     codes = [c.strip() for c in raw.replace("\u200b", "").split("/") if c.strip()]
+    if not codes:
+        raise ValueError("NUSMods returned an empty module code")
     return codes[0], codes[1:]
 
 
 def hhmm(time: str) -> str:
-    """'1000' -> '10:00'."""
     return f"{time[:2]}:{time[2:]}"
 
 
-# transformation
 def build_sessions(
     module_info: list[dict], venue_info: dict, semester: Semester
 ) -> list[dict]:
     """Every lecture session in the semester, sorted by date, start time and module."""
+    if not module_info:
+        raise ValueError("NUSMods returned an empty module catalogue")
     modules = {m["moduleCode"]: m for m in module_info}
 
     # (module, lessonType, classNo, date, start, venue) -> (end, size, crossListed).
-    # NUSMods sometimes lists the same slot twice with different end times; keep
-    # the longer one.
-    # CS2103/CS2103T gives moduleCode:CS2103 and crossListed:CS2103T
+    # Duplicate slots can have different end times; keep the longer one.
     slots: dict[tuple, tuple] = {}
     for venue, days in venue_info.items():
         for day in days:
             for lesson in day["classes"]:
-                if lesson["lessonType"] not in INCLUDED_LESSON_TYPES:
+                if lesson["lessonType"] not in LESSON_TYPE_CODES:
                     continue
                 module_code, cross_listed = split_module_code(lesson["moduleCode"])
-                if modules.get(module_code, {}).get("faculty") in EXCLUDED_FACULTIES:
+                module = modules.get(module_code)
+                if module is None or any(
+                    not isinstance(module.get(field), str) or not module[field].strip()
+                    for field in ("title", "faculty", "department")
+                ):
+                    raise ValueError(f"Incomplete NUSMods metadata for {module_code}")
+                if module["faculty"] in EXCLUDED_FACULTIES:
                     continue
                 for on in class_dates(semester, day["day"], lesson["weeks"]):
                     key = (
@@ -68,62 +73,24 @@ def build_sessions(
                     if key not in slots or value > slots[key]:
                         slots[key] = value
 
-    groups: dict[tuple, list[tuple]] = defaultdict(list)
-    for key, value in slots.items():
-        groups[key[:4]].append(
-            key + value
-        )  # group the modules with (module, lessonType, classNo, date)
-
-    # example:
-    # groups = {
-    # ("SC3210","Lecture","1", 2026-10-13): [ (…"1000","UTSRC-GLR"…) ], # 1 item
-    # ("ID3041","Lecture","1", 2026-10-15): [ (…"1400","SDE3-LT424"…), (…"1400","SDE3-LT425"…) ], # 2 rooms (same module, same date)
-    # ("CG2028","Lecture","01",2026-08-11): [ (…"1400","E-Learn_A"…),  (…"1500","SDE3-LT424"…) ], # 2 times
-    # }
-
-    sessions = []
-    for (module_code, lesson_type, class_no, on), group in groups.items():
-        base_id = f"{module_code}-{LESSON_TYPE_CODES[lesson_type]}-{class_no}@{on.isoformat()}"
-        for occurrence in group:
-            sessions.append(
-                _session(
-                    _session_id(base_id, occurrence, group),
-                    occurrence,
-                    modules.get(module_code, {}),
-                )
-            )
-
+    sessions = [_session(key + value, modules[key[0]]) for key, value in slots.items()]
     sessions.sort(key=lambda s: (s["date"], s["startTime"], s["moduleCode"], s["id"]))
     return sessions
 
 
-def _session_id(base_id: str, occurrence: tuple, group: list[tuple]) -> str:
-    """`<module>-LEC-<classNo>@<date>`
-    When a class has several sessions on the same day:
-    a different start time adds `-HHMM`, a different room adds `-<venue>`."""
-    # occurrence = (module, lessonType, classNo, date, start, venue, end, size, cross)
-    start, venue = occurrence[4], occurrence[5]
-
-    start_times = {o[4] for o in group}
-    rooms_at_this_start = {o[5] for o in group if o[4] == start}
-
-    session_id = base_id
-    if len(start_times) > 1:
-        session_id += f"-{start}"
-    if len(rooms_at_this_start) > 1:
-        session_id += f"-{venue}"
-    return session_id
-
-
-def _session(session_id: str, occurrence: tuple, module: dict) -> dict:
+def _session(occurrence: tuple, module: dict) -> dict:
     module_code, lesson_type, class_no, on, start, venue, end, size, cross = occurrence
+    session_id = (
+        f"{module_code}-{LESSON_TYPE_CODES[lesson_type]}-{class_no}"
+        f"@{on.isoformat()}-{start}-{venue}"
+    )
     return {
         "id": session_id,
         "moduleCode": module_code,
         "crossListed": list(cross),
-        "moduleTitle": module.get("title"),
-        "faculty": module.get("faculty"),
-        "department": module.get("department"),
+        "moduleTitle": module["title"],
+        "faculty": module["faculty"],
+        "department": module["department"],
         "level": module_level(module_code),
         "lessonType": lesson_type,
         "classNo": class_no,
@@ -138,14 +105,14 @@ def _session(session_id: str, occurrence: tuple, module: dict) -> dict:
 
 
 def build_modules(module_info: list[dict], sessions: list[dict]) -> list[dict]:
-    """Descriptions for the modules that have sessions, for recommendations."""
+    """Return module metadata for the published lecture sessions."""
     codes = {s["moduleCode"] for s in sessions}
     return [
         {
             "moduleCode": m["moduleCode"],
-            "title": m.get("title"),
-            "faculty": m.get("faculty"),
-            "department": m.get("department"),
+            "title": m["title"],
+            "faculty": m["faculty"],
+            "department": m["department"],
             "level": module_level(m["moduleCode"]),
             "moduleCredit": m.get("moduleCredit"),
             "description": m.get("description"),

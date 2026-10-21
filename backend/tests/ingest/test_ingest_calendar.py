@@ -7,7 +7,6 @@ from ingest.academic_calendar import (
     class_dates,
     ingest_due,
     semester_for,
-    teaching_week_monday,
     week_label,
 )
 
@@ -18,7 +17,6 @@ ALL_WEEKS = list(range(1, 14))
 @pytest.mark.parametrize(
     ("today", "expected"),
     [
-        (date(2026, 10, 18), ("2026-2027", 1)),
         (date(2026, 8, 1), ("2026-2027", 1)),
         (date(2027, 1, 4), ("2026-2027", 2)),
         (date(2027, 6, 15), ("2026-2027", 2)),  # June/July keep serving Sem 2
@@ -32,13 +30,6 @@ def test_semester_for(today, expected):
 def test_semester_for_missing_calendar_entry():
     with pytest.raises(KeyError, match="2027-2028"):
         semester_for(date(2027, 8, 10))
-
-
-def test_teaching_weeks_skip_recess():
-    assert teaching_week_monday(SEM1, 1) == date(2026, 8, 10)
-    assert teaching_week_monday(SEM1, 6) == date(2026, 9, 14)
-    assert teaching_week_monday(SEM1, 7) == date(2026, 9, 28)
-    assert teaching_week_monday(SEM1, 13) == date(2026, 11, 9)
 
 
 @pytest.mark.parametrize(
@@ -76,6 +67,24 @@ def test_public_holidays_dropped():
     assert len(dates) == 11
 
 
+def test_semester_two_calendar():
+    semester = SEMESTERS[("2026-2027", 2)]
+    assert class_dates(semester, "Thursday", ALL_WEEKS) == [
+        date(2027, 1, 14),
+        date(2027, 1, 21),
+        date(2027, 1, 28),
+        date(2027, 2, 4),
+        date(2027, 2, 11),
+        date(2027, 2, 18),
+        date(2027, 3, 4),
+        date(2027, 3, 18),
+        date(2027, 3, 25),
+        date(2027, 4, 1),
+        date(2027, 4, 8),
+        date(2027, 4, 15),
+    ]
+
+
 def test_date_range_weeks_count_calendar_weeks_from_start():
     weeks = {
         "start": "2026-08-13",
@@ -106,16 +115,19 @@ def test_date_range_outside_semester_dropped():
 @pytest.mark.parametrize(
     ("today", "due"),
     [
-        (date(2026, 8, 3), True),  # first Monday of August, before week 1
-        (date(2026, 8, 17), True),  # week 2
-        (date(2026, 8, 24), True),  # week 3
-        (date(2026, 8, 31), False),  # week 4
-        (date(2026, 9, 7), True),  # first Monday of September
-        (date(2026, 10, 19), False),
-        (date(2027, 1, 4), True),  # first Monday of January, before Sem 2 week 1
-        (date(2027, 1, 18), True),  # Sem 2 week 2
-        (date(2027, 2, 1), True),
-        (date(2027, 2, 8), False),  # Sem 2 week 5
+        pytest.param(date(2026, 8, 3), True, id="before-week-one"),
+        pytest.param(date(2026, 8, 10), True, id="week-one"),
+        pytest.param(date(2026, 8, 17), True, id="week-two"),
+        pytest.param(date(2026, 8, 24), True, id="week-three"),
+        pytest.param(date(2026, 8, 31), False, id="week-four"),
+        pytest.param(date(2026, 9, 7), True, id="first-monday-on-seventh"),
+        pytest.param(date(2026, 10, 19), False, id="later-monday"),
+        pytest.param(date(2027, 1, 4), True, id="before-semester-two"),
+        pytest.param(date(2027, 1, 18), True, id="semester-two-week-two"),
+        pytest.param(date(2027, 2, 1), True, id="first-monday-on-first"),
+        pytest.param(date(2027, 2, 8), False, id="semester-two-later-monday"),
+        pytest.param(date(2026, 9, 1), False, id="monthly-non-monday"),
+        pytest.param(date(2026, 8, 18), False, id="weekly-non-monday"),
     ],
 )
 def test_ingest_due(today, due):

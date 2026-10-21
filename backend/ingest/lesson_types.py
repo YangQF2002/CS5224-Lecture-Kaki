@@ -1,10 +1,5 @@
-"""Define lesson-type codes.
-
-Ingest publishes this mapping in index.json so the frontend uses the same codes.
-"""
+"""Define included lesson types and their shared session-ID codes."""
 
 LESSON_TYPE_CODES = {
     "Lecture": "LEC",
 }
-
-INCLUDED_LESSON_TYPES = frozenset({"Lecture"})

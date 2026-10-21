@@ -10,12 +10,14 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 @pytest.fixture
 def module_info() -> list[dict]:
-    return json.loads((FIXTURES / "moduleInfo.json").read_text())
+    return json.loads((FIXTURES / "moduleInfo.json").read_text(encoding="utf-8"))
 
 
 @pytest.fixture
 def venue_info() -> dict:
-    return json.loads((FIXTURES / "venueInformation-sem1.json").read_text())
+    return json.loads(
+        (FIXTURES / "venueInformation-sem1.json").read_text(encoding="utf-8")
+    )
 
 
 @pytest.fixture

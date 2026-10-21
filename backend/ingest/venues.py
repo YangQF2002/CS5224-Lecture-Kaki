@@ -1,10 +1,8 @@
-"""Map the venue to building or faculty"""
+"""Derive building codes and online status from NUSMods venues."""
 
 ONLINE_PREFIXES = ("E-Learn", "E-Hybrid")
 
-# Lecture theatres whose code doesn't name a building
-# LT3, LT4 and LT16 were
-# too far from any building and are left out.
+# Lecture theatre codes do not identify their buildings; unmapped venues return None.
 LECTURE_THEATRE_BUILDINGS = {
     "LT1": "E2",
     "LT2": "E2",

@@ -1,8 +1,4 @@
-"""NUS academic calendar: which semester is current and which dates a class meets.
-
-Semester dates come from the NUS Registrar calendar; public holidays from MOM.
-Add a row to SEMESTERS (and the year's holidays) before each new academic year.
-"""
+"""Expand lesson dates using the supported NUS academic calendar."""
 
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -15,7 +11,7 @@ LAST_TEACHING_WEEK = 13
 
 @dataclass(frozen=True)
 class Semester:
-    acad_year: str  # "2026-2027", as NUSMods spells it
+    acad_year: str  # NUSMods format: "2026-2027".
     number: int  # 1 or 2
     week1_monday: date
     last_day: date  # last day of the exam period
@@ -25,15 +21,13 @@ class Semester:
         return f"{self.acad_year}/sem-{self.number}"
 
 
-# manual, can add a way to fetch this from nus ay calendar later, now we hardcode it
-# start from week 1, end on last day of examination
+# https://www.nus.edu.sg/registrar/docs/default-source/calendar/ay2026-2027.pdf
 SEMESTERS = {
     ("2026-2027", 1): Semester("2026-2027", 1, date(2026, 8, 10), date(2026, 12, 5)),
     ("2026-2027", 2): Semester("2026-2027", 2, date(2027, 1, 11), date(2027, 5, 8)),
 }
 
-# Singapore public holidays, and make up holiday
-# follow nus calendar
+# University closures, including observed public holidays.
 PUBLIC_HOLIDAYS = {
     date(2026, 8, 9): "National Day",
     date(2026, 8, 10): "National Day (observed)",
@@ -46,6 +40,7 @@ PUBLIC_HOLIDAYS = {
     date(2027, 2, 7): "Chinese New Year",
     date(2027, 2, 8): "Chinese New Year (observed)",
     date(2027, 3, 10): "Hari Raya Puasa",
+    date(2027, 3, 11): "NUS Well-Being Day",
     date(2027, 3, 26): "Good Friday",
     date(2027, 5, 1): "Labour Day",
     date(2027, 5, 17): "Hari Raya Haji",
@@ -53,9 +48,8 @@ PUBLIC_HOLIDAYS = {
 }
 
 
-# Special Term is not included currently
 def semester_for(today: date) -> Semester:
-    """Aug-Dec is Semester 1; Jan-Jul is Semester 2 (kept until Semester 1 starts)."""
+    """Keep Semester 2 through the summer; special terms are not ingested."""
     if today.month >= 8:
         key = (f"{today.year}-{today.year + 1}", 1)
     else:
@@ -90,20 +84,18 @@ def week_label(semester: Semester, day: date) -> str | None:
     return f"exam-{index - LAST_TEACHING_WEEK - 1}"
 
 
-WEEKLY_RUN_LABELS = frozenset({"week-01", "week-02", "week-03"})
-
-
 def ingest_due(semester: Semester, today: date) -> bool:
-    """The schedule fires every Monday; ingest weekly in teaching weeks 1-3, when
-    timetables change most, and otherwise only on the first Monday of the month."""
-    return week_label(semester, today) in WEEKLY_RUN_LABELS or today.day <= 7
+    """Run on Mondays in teaching weeks 1-3, then on the first Monday each month."""
+    return today.weekday() == 0 and (
+        week_label(semester, today) in {"week-01", "week-02", "week-03"}
+        or today.day <= 7
+    )
 
 
 def class_dates(semester: Semester, day_name: str, weeks: list | dict) -> list[date]:
-    """Dates when lectures are going on, dropping public holidays and anything outside the semester.
+    """Expand lesson dates, excluding holidays and dates outside the semester.
 
-    `weeks` returns by NUSMods use two formats: a list of teaching-week numbers ([1,2,...,13]),
-    or a dict WeekRange object (refer nusmods api)
+    Date-range week numbers count from their start date, not the teaching calendar.
     """
     if isinstance(weeks, list):
         weekday = DAYS.index(day_name)

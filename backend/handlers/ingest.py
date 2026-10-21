@@ -1,9 +1,4 @@
-"""Scheduled Lambda: NUSMods -> lecture JSON in the web bucket.
-
-The schedule runs on every Monday; runs that aren't due (see `ingest_due`) are
-skipped. Invoke with {"date": "YYYY-MM-DD"} to ingest the semester containing
-that date right away.
-"""
+"""Ingest NUSMods lecture data on schedule or for a manually selected semester."""
 
 import json
 import logging
@@ -17,37 +12,31 @@ from ingest.nusmods import fetch_semester
 from ingest.publish import publish
 from ingest.transform import build_modules, build_sessions
 
-SINGAPORE = timezone(timedelta(hours=8))
-
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+SINGAPORE = timezone(timedelta(hours=8))
 
 
 def handler(event, context, *, s3=None, now: datetime | None = None) -> dict:
     now = now or datetime.now(UTC)
-    manual = bool(
-        event and event.get("date")
-    )  # if event has a "date" key, it's a manual invocation
-    if manual:
-        today = date.fromisoformat(event["date"])
-    else:
-        today = now.astimezone(SINGAPORE).date()
-    semester = semester_for(today)  # pick semester 1 or 2
-
-    if not manual and not ingest_due(semester, today):
+    manual_date = event.get("date") if event else None
+    today = (
+        date.fromisoformat(manual_date)
+        if manual_date
+        else now.astimezone(SINGAPORE).date()
+    )
+    semester = semester_for(today)
+    if not manual_date and not ingest_due(semester, today):
         result = {"semester": semester.key, "skipped": f"not due on {today}"}
         logger.info(json.dumps(result))
         return result
-
-    # download two files
     module_info, venue_info = fetch_semester(semester.acad_year, semester.number)
     sessions = build_sessions(module_info, venue_info, semester)
     modules = build_modules(module_info, sessions)
 
-    # publish to S3
     result = publish(
         s3 or boto3.client("s3"),
-        os.environ["WEB_BUCKET"],  # defined in infra/template.yaml
+        os.environ["WEB_BUCKET"],
         semester,
         sessions,
         modules,
