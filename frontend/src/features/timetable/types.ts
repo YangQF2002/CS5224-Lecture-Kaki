@@ -1,4 +1,4 @@
-export type Semester = 1 | 2
+export type Semester = 1 | 2 | 3 | 4
 
 export type Day = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday'
 
