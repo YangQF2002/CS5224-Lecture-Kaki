@@ -16,10 +16,7 @@ docker compose up --build -d --wait
 - API docs: <http://localhost:8000/docs>
 - API health: <http://localhost:8000/health>
 
-To enable login, create `backend/.env.local` from
-[`backend/.env.example`](backend/.env.example) if it does not already exist, and
-fill in the deployed Cognito configuration. Recreate the API after editing it:
-`docker compose up -d --force-recreate backend`.
+To test Cognito login through the API docs, create `backend/.env.local` from [`backend/.env.example`](backend/.env.example) if it does not already exist, and fill in the deployed Cognito configuration. Recreate the API after editing it: `docker compose up -d --force-recreate backend`.
 The stack also starts without this file for UI and public health checks.
 
 ```sh
@@ -39,9 +36,12 @@ The smoke test requires the runtime containers to be running. See
 - **Backend:** Python, FastAPI.
 - **AWS:** S3, CloudFront, API Gateway, Lambda, Cognito, DynamoDB.
 
+## Current features
+
+- Personal timetable with module and lesson-group selection, NUSMods import, browser-local saving, and clash highlighting.
+
 ## Planned features
 
 - Lecture discovery by faculty, timing, and interests.
-- Personal timetable entry or NUSMods timetable import.
 - Lecture recommendations that fit interests and free time.
 - Session discussions to connect with other students and find companions.
