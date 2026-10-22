@@ -27,7 +27,12 @@ RUN --mount=type=cache,target=/root/.cache/pypoetry \
     /opt/poetry/bin/poetry install --with dev --no-root --no-interaction --no-ansi
 COPY app ./app
 COPY lambdas ./lambdas
+COPY handlers ./handlers
+COPY ingest ./ingest
+COPY scripts ./scripts
 COPY tests ./tests
+# Windows build contexts can mark copied Python files executable.
+RUN find . -type f -name '*.py' -exec chmod 644 {} +
 USER 10001:10001
 CMD ["sh", "-c", "ruff check --no-cache . && ruff format --check --no-cache . && python -m pytest -p no:cacheprovider"]
 

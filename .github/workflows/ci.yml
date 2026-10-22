@@ -10,8 +10,34 @@ permissions:
   contents: read
 
 jobs:
+  backend:
+    name: Backend checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build backend test image
+        run: docker compose build --pull backend-test
+      - name: Lint, check formatting, and run backend tests
+        run: docker compose run --rm backend-test
+
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Build frontend test image
+        run: docker compose build --pull frontend-test
+      - name: Lint, check formatting, check types, and build frontend
+        run: docker compose run --rm frontend-test
+
   containers:
-    name: Container checks
+    name: Docker and infrastructure checks
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -20,14 +46,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      - name: Validate CloudFormation templates
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cfn-lint"
+          "$RUNNER_TEMP/cfn-lint/bin/python" -m pip install cfn-lint==1.57.2
+          # Local Lambda paths are resolved during packaging.
+          "$RUNNER_TEMP/cfn-lint/bin/cfn-lint" --template infra/auth.yaml infra/template.yaml --regions ap-southeast-1 --ignore-checks W3002
       - name: Validate Compose configuration
         run: docker compose config --quiet
-      - name: Build runtime and test images
-        run: docker compose --profile test build --pull
-      - name: Backend checks in container
-        run: docker compose run --rm backend-test
-      - name: Frontend checks in container
-        run: docker compose run --rm frontend-test
+      - name: Build runtime images
+        run: docker compose build --pull backend frontend
       - name: Start runtime containers
         run: docker compose up --detach --wait --wait-timeout 90
       - name: Smoke test runtime images

@@ -30,3 +30,9 @@ Authentication uses Cognito for signup and login. The pre-signup Lambda rejects 
 Deploy authentication once to a shared development AWS account in `ap-southeast-1`. CloudFormation creates Cognito, the signup Lambda, its execution role, and logs while a private S3 bucket holds the Lambda deployment package.
 
 See [authentication](../docs/authentication.md) for the flow, integration details, deployment commands, and opt-in Cognito tests.
+
+## Lecture data ingestion
+
+Generate lecture data locally with `poetry run python scripts/ingest_local.py`. This reads public NUSMods data and uses in-memory S3; it does not access AWS.
+
+See [lecture data](../docs/lecture-data.md) for the output contract, Lambda packaging, deployment and manual ingestion.

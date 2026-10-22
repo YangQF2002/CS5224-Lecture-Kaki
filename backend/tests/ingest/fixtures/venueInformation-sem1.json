@@ -1,0 +1,602 @@
+{
+ "UTSRC-GLR": [
+  {
+   "day": "Tuesday",
+   "classes": [
+    {
+     "classNo": "1",
+     "endTime": "1200",
+     "startTime": "1000",
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "day": "Tuesday",
+     "lessonType": "Lecture",
+     "size": 40,
+     "moduleCode": "SC3210"
+    }
+   ]
+  }
+ ],
+ "LT19": [
+  {
+   "day": "Monday",
+   "classes": [
+    {
+     "classNo": "1",
+     "endTime": "1600",
+     "startTime": "1400",
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+     ],
+     "day": "Monday",
+     "lessonType": "Lecture",
+     "size": 96,
+     "moduleCode": "LAJ1201"
+    }
+   ]
+  }
+ ],
+ "SDE3-SR6": [
+  {
+   "day": "Friday",
+   "classes": [
+    {
+     "classNo": "1",
+     "endTime": "1300",
+     "startTime": "0900",
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "day": "Friday",
+     "lessonType": "Lecture",
+     "size": 100,
+     "moduleCode": "ID3041"
+    }
+   ]
+  }
+ ],
+ "ENG-AUD": [
+  {
+   "day": "Thursday",
+   "classes": [
+    {
+     "classNo": "01",
+     "endTime": "1800",
+     "startTime": "1700",
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "day": "Thursday",
+     "lessonType": "Lecture",
+     "size": 50,
+     "moduleCode": "CE2112T/​CE2112"
+    }
+   ]
+  }
+ ],
+ "SDE3-LT423": [
+  {
+   "day": "Tuesday",
+   "classes": [
+    {
+     "classNo": "01",
+     "endTime": "1400",
+     "startTime": "1200",
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "day": "Tuesday",
+     "lessonType": "Lecture",
+     "size": 50,
+     "moduleCode": "CE2112T/​CE2112"
+    }
+   ]
+  }
+ ],
+ "SDE3-LT425": [
+  {
+   "day": "Thursday",
+   "classes": [
+    {
+     "classNo": "1",
+     "endTime": "1800",
+     "startTime": "1400",
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "day": "Thursday",
+     "lessonType": "Lecture",
+     "size": 100,
+     "moduleCode": "ID3041"
+    }
+   ]
+  }
+ ],
+ "SDE3-LT424": [
+  {
+   "day": "Thursday",
+   "classes": [
+    {
+     "classNo": "1",
+     "endTime": "1800",
+     "startTime": "1400",
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "day": "Thursday",
+     "lessonType": "Lecture",
+     "size": 100,
+     "moduleCode": "ID3041"
+    }
+   ]
+  },
+  {
+   "day": "Tuesday",
+   "classes": [
+    {
+     "classNo": "01",
+     "endTime": "1700",
+     "startTime": "1500",
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+     ],
+     "day": "Tuesday",
+     "lessonType": "Lecture",
+     "size": 164,
+     "moduleCode": "CG2028"
+    }
+   ]
+  }
+ ],
+ "LT18": [
+  {
+   "day": "Thursday",
+   "classes": [
+    {
+     "classNo": "1",
+     "endTime": "1200",
+     "startTime": "1000",
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+     ],
+     "day": "Thursday",
+     "lessonType": "Lecture",
+     "size": 138,
+     "moduleCode": "NM2103"
+    }
+   ]
+  }
+ ],
+ "E-Learn_A": [
+  {
+   "day": "Tuesday",
+   "classes": [
+    {
+     "classNo": "01",
+     "endTime": "1500",
+     "startTime": "1400",
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+     ],
+     "day": "Tuesday",
+     "lessonType": "Lecture",
+     "size": 164,
+     "moduleCode": "CG2028"
+    }
+   ]
+  }
+ ],
+ "E-Learn_C": [
+  {
+   "day": "Thursday",
+   "classes": [
+    {
+     "classNo": "1",
+     "endTime": "1200",
+     "startTime": "1000",
+     "weeks": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "day": "Thursday",
+     "lessonType": "Lecture",
+     "size": 138,
+     "moduleCode": "NM2103"
+    }
+   ]
+  }
+ ],
+ "LT9": [
+  {
+   "day": "Monday",
+   "classes": [
+    {
+     "classNo": "2",
+     "endTime": "2000",
+     "startTime": "1800",
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "day": "Monday",
+     "lessonType": "Lecture",
+     "size": 96,
+     "moduleCode": "LAJ1201"
+    }
+   ]
+  },
+  {
+   "day": "Tuesday",
+   "classes": [
+    {
+     "classNo": "3",
+     "endTime": "1200",
+     "startTime": "1000",
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "day": "Tuesday",
+     "lessonType": "Lecture",
+     "size": 96,
+     "moduleCode": "LAJ1201"
+    }
+   ]
+  }
+ ],
+ "LT14": [
+  {
+   "day": "Monday",
+   "classes": [
+    {
+     "classNo": "1",
+     "endTime": "1600",
+     "startTime": "1400",
+     "weeks": [
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "day": "Monday",
+     "lessonType": "Lecture",
+     "size": 96,
+     "moduleCode": "LAJ1201"
+    }
+   ]
+  }
+ ],
+ "UTSRC-SR3": [
+  {
+   "day": "Friday",
+   "classes": [
+    {
+     "classNo": "D1",
+     "endTime": "1800",
+     "startTime": "1600",
+     "weeks": [
+      3,
+      5,
+      7,
+      9,
+      11
+     ],
+     "day": "Friday",
+     "lessonType": "Tutorial",
+     "size": 20,
+     "moduleCode": "SC3210"
+    },
+    {
+     "classNo": "E1",
+     "endTime": "1800",
+     "startTime": "1600",
+     "weeks": [
+      4,
+      6,
+      8,
+      10,
+      12
+     ],
+     "day": "Friday",
+     "lessonType": "Tutorial",
+     "size": 20,
+     "moduleCode": "SC3210"
+    }
+   ]
+  }
+ ],
+ "LT35-01-01": [
+  {
+   "day": "Monday",
+   "classes": [
+    {
+     "classNo": "1",
+     "endTime": "2000",
+     "startTime": "1830",
+     "weeks": [
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "day": "Monday",
+     "lessonType": "Lecture",
+     "size": 100,
+     "moduleCode": "BMI5102"
+    },
+    {
+     "classNo": "1",
+     "endTime": "2130",
+     "startTime": "1830",
+     "weeks": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13
+     ],
+     "day": "Monday",
+     "lessonType": "Lecture",
+     "size": 100,
+     "moduleCode": "BMI5102"
+    }
+   ]
+  }
+ ],
+ "Integrity": [
+  {
+   "day": "Wednesday",
+   "classes": [
+    {
+     "classNo": "F1",
+     "endTime": "1700",
+     "startTime": "0900",
+     "weeks": [
+      12
+     ],
+     "day": "Wednesday",
+     "lessonType": "Lecture",
+     "size": 200,
+     "moduleCode": "EBA5003"
+    }
+   ]
+  },
+  {
+   "day": "Saturday",
+   "classes": [
+    {
+     "classNo": "P1",
+     "endTime": "1700",
+     "startTime": "0900",
+     "weeks": [
+      12
+     ],
+     "day": "Saturday",
+     "lessonType": "Lecture",
+     "size": 200,
+     "moduleCode": "EBA5003"
+    }
+   ]
+  },
+  {
+   "day": "Monday",
+   "classes": [
+    {
+     "classNo": "F1",
+     "endTime": "1700",
+     "startTime": "0900",
+     "weeks": [
+      12
+     ],
+     "day": "Monday",
+     "lessonType": "Lecture",
+     "size": 200,
+     "moduleCode": "EBA5003"
+    }
+   ]
+  },
+  {
+   "day": "Tuesday",
+   "classes": [
+    {
+     "classNo": "F1",
+     "endTime": "1700",
+     "startTime": "0900",
+     "weeks": [
+      12
+     ],
+     "day": "Tuesday",
+     "lessonType": "Lecture",
+     "size": 200,
+     "moduleCode": "EBA5003"
+    }
+   ]
+  }
+ ],
+ "Momemtum": [
+  {
+   "day": "Monday",
+   "classes": [
+    {
+     "classNo": "F1",
+     "endTime": "1700",
+     "startTime": "0900",
+     "weeks": [
+      10
+     ],
+     "day": "Monday",
+     "lessonType": "Lecture",
+     "size": 200,
+     "moduleCode": "EBA5003"
+    }
+   ]
+  },
+  {
+   "day": "Tuesday",
+   "classes": [
+    {
+     "classNo": "F1",
+     "endTime": "1700",
+     "startTime": "0900",
+     "weeks": [
+      10
+     ],
+     "day": "Tuesday",
+     "lessonType": "Lecture",
+     "size": 200,
+     "moduleCode": "EBA5003"
+    }
+   ]
+  },
+  {
+   "day": "Wednesday",
+   "classes": [
+    {
+     "classNo": "F1",
+     "endTime": "1700",
+     "startTime": "0900",
+     "weeks": [
+      10
+     ],
+     "day": "Wednesday",
+     "lessonType": "Lecture",
+     "size": 200,
+     "moduleCode": "EBA5003"
+    }
+   ]
+  }
+ ]
+}

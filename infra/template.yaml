@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: LectureKaki lecture ingestion and shared website bucket.
+
+Parameters:
+  Env:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+  AlertEmail:
+    Type: String
+    Default: ''
+    Description: Email address for ingestion failure alerts
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
+
+Resources:
+  WebBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'lecturekaki-${Env}-web-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  IngestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../build/ingest.zip
+      Handler: handlers.ingest.handler
+      Runtime: python3.14
+      Architectures: [x86_64]
+      Description: NUSMods -> lecture JSON in the web bucket
+      Timeout: 300
+      MemorySize: 1024
+      Environment:
+        Variables:
+          WEB_BUCKET: !Ref WebBucket
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: [s3:GetObject, s3:PutObject]
+              Resource: !Sub '${WebBucket.Arn}/lectures/*'
+            # S3 needs ListBucket to return 404 rather than 403 for a missing pointer.
+            - Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt WebBucket.Arn
+      Events:
+        EveryMonday:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: 'cron(0 3 ? * MON *)'
+            ScheduleExpressionTimezone: Asia/Singapore
+            FlexibleTimeWindow:
+              Mode: 'OFF'
+            RetryPolicy:
+              MaximumRetryAttempts: 2
+
+  IngestLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${IngestFunction}'
+      RetentionInDays: 30
+
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'lecturekaki-${Env}-alerts'
+
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  IngestErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'lecturekaki-${Env}-ingest-errors'
+      AlarmDescription: Ingestion failed; check the function logs and current snapshot.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref IngestFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+Outputs:
+  WebBucketName:
+    Value: !Ref WebBucket
+  IngestFunctionName:
+    Value: !Ref IngestFunction
+  AlertTopicArn:
+    Value: !Ref AlertTopic

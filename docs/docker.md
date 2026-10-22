@@ -53,9 +53,9 @@ test service enables it. Backend checks run Ruff and the offline pytest suite.
 Frontend checks run ESLint, Prettier, TypeScript, and the Vite build. The smoke
 script requires Python 3 on the host and running runtime containers; it verifies
 public health, protected-route rejection, API docs, static assets, cache headers,
-and SPA fallback behavior. CI uses a single container job to build the images,
-run both test containers, and smoke-test the running stack. The backend image
-build also runs `poetry check --lock` to validate the dependency lockfile.
+and SPA fallback behavior.
+
+CI runs three independent jobs: backend lint, formatting and offline tests; frontend lint, formatting, type checking and production build; and Docker runtime builds, infrastructure validation and smoke tests against the running stack. Application checks use their respective test containers. The backend image build also runs `poetry check --lock` to validate the dependency lockfile.
 
 Live Cognito tests stay opt-in. After adding fresh test tokens as described in
 [authentication](authentication.md), explicitly pass that file to the test image:

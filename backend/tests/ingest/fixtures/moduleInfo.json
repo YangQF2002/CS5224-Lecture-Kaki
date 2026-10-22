@@ -1,0 +1,265 @@
+[
+ {
+  "department": "Surgery",
+  "description": "This course introduces the biomedical informatics student to the health sciences. This encompasses an introduction to cl",
+  "faculty": "Yong Loo Lin Sch of Medicine",
+  "gradingBasisDescription": "Graded",
+  "moduleCode": "BMI5102",
+  "moduleCredit": "4",
+  "semesterData": [
+   {
+    "covidZones": [
+     "C"
+    ],
+    "semester": 1
+   }
+  ],
+  "title": "Health Sciences for Non-Clinicians",
+  "workload": [
+   2,
+   1,
+   0,
+   3,
+   4
+  ]
+ },
+ {
+  "attributes": {
+   "mpes1": true,
+   "su": true
+  },
+  "department": "Civil and Environmental Engineering",
+  "description": "This course provides a comprehensive overview of structural engineering principles and groundwater seepage and consolida",
+  "faculty": "College of Design and Engineering",
+  "gradingBasisDescription": "Graded",
+  "moduleCode": "CE2112T",
+  "moduleCredit": "4",
+  "preclusion": "If undertaking an Undergraduate DegreeTHEN( must not have completed CE1109)OR( must not have completed TCE1109)OR( must not have completed CE2112)OR( must not have completed TCE2112)",
+  "semesterData": [
+   {
+    "covidZones": [
+     "C"
+    ],
+    "examDate": "2026-11-25T01:00:00.000Z",
+    "examDuration": 90,
+    "semester": 1
+   }
+  ],
+  "title": "Basis of Structural Analysis and Saturated Geomechanics",
+  "workload": [
+   3,
+   1,
+   0.5,
+   1,
+   4.5
+  ]
+ },
+ {
+  "attributes": {
+   "mpes1": true,
+   "mpes2": true
+  },
+  "department": "Computing and Engineering Programme",
+  "description": "This course familiarizes students with the fundamentals of computing devices. It introduces microprocessor concepts, mem",
+  "faculty": "Multi-Disciplinary Prog (CEG)",
+  "gradingBasisDescription": "Graded",
+  "moduleCode": "CG2028",
+  "moduleCredit": "2",
+  "preclusion": "If undertaking an Undergraduate DegreeTHEN( must not have completed CS2100/CS2100DE/EE2028)",
+  "prerequisite": "If undertaking an Undergraduate DegreeTHEN( must have completed 1 of CS1010/CS1010A/CS1010E/CS1010S/CS1010X/CS1101S/UTC2851 at a grade of at least D)",
+  "semesterData": [
+   {
+    "covidZones": [
+     "C",
+     "Unknown"
+    ],
+    "examDate": "2026-09-29T06:00:00.000Z",
+    "examDuration": 90,
+    "semester": 1
+   },
+   {
+    "covidZones": [
+     "C"
+    ],
+    "examDate": "2027-03-01T05:00:00.000Z",
+    "examDuration": 90,
+    "semester": 2
+   }
+  ],
+  "title": "Computer Organization",
+  "workload": [
+   3,
+   1,
+   1,
+   2,
+   3
+  ]
+ },
+ {
+  "attributes": {
+   "mpes1": true,
+   "mpes2": true
+  },
+  "department": "NUS-ISS",
+  "description": "This course aims to equip the learners the skills to manage data and provide analytics solution for customer relationshi",
+  "faculty": "NUS-ISS",
+  "gradingBasisDescription": "Graded",
+  "moduleCode": "EBA5003",
+  "moduleCredit": "8",
+  "semesterData": [
+   {
+    "covidZones": [
+     "C",
+     "Unknown"
+    ],
+    "semester": 1
+   },
+   {
+    "covidZones": [
+     "Unknown"
+    ],
+    "semester": 2
+   }
+  ],
+  "title": "Customer Analytics",
+  "workload": [
+   6.5,
+   6.5,
+   1,
+   5,
+   1
+  ]
+ },
+ {
+  "department": "Design",
+  "description": "This is a one semester involvement for attachment to industry or other institutions of design, research and development ",
+  "faculty": "College of Design and Engineering",
+  "gradingBasisDescription": "Completed Satisfactory/Unsatisfactory",
+  "moduleCode": "ID3041",
+  "moduleCredit": "14",
+  "prerequisite": "if undertaking an Undergraduate Degree then ( the student has achieved at least 60 Units prior to enrolment )",
+  "semesterData": [
+   {
+    "covidZones": [
+     "C"
+    ],
+    "semester": 1
+   },
+   {
+    "covidZones": [
+     "C",
+     "Unknown"
+    ],
+    "semester": 2
+   }
+  ],
+  "title": "Special Studies",
+  "workload": [
+   0,
+   0,
+   0,
+   35,
+   0
+  ]
+ },
+ {
+  "attributes": {
+   "mpes1": true,
+   "mpes2": true,
+   "su": true
+  },
+  "department": "Centre for Language Studies",
+  "description": "This course is designed for students with no prior knowledge of Japanese. We aim to develop Japanese competence through ",
+  "faculty": "Arts and Social Science",
+  "gradingBasisDescription": "Graded",
+  "moduleCode": "LAJ1201",
+  "moduleCredit": "4",
+  "semesterData": [
+   {
+    "covidZones": [
+     "C"
+    ],
+    "semester": 1
+   },
+   {
+    "covidZones": [
+     "C"
+    ],
+    "semester": 2
+   }
+  ],
+  "title": "Japanese 1",
+  "workload": [
+   2,
+   4,
+   0,
+   2,
+   2
+  ]
+ },
+ {
+  "attributes": {
+   "mpes1": true,
+   "mpes2": true,
+   "su": true
+  },
+  "department": "Communications and New Media",
+  "description": "This course is to help students understand what quantitative research is (more specifically, how they can develop testab",
+  "faculty": "Arts and Social Science",
+  "gradingBasisDescription": "Graded",
+  "moduleCode": "NM2103",
+  "moduleCredit": "4",
+  "semesterData": [
+   {
+    "covidZones": [
+     "C",
+     "Unknown"
+    ],
+    "semester": 1
+   },
+   {
+    "covidZones": [
+     "C",
+     "Unknown"
+    ],
+    "semester": 2
+   }
+  ],
+  "title": "Quantitative Research Methods",
+  "workload": [
+   2,
+   1,
+   0,
+   3,
+   4
+  ]
+ },
+ {
+  "attributes": {
+   "mpes1": true,
+   "mpes2": true
+  },
+  "department": "Sociology and Anthropology",
+  "description": "This course offers a comprehensive exploration of the core concepts, real-world applications, and far-reaching social im",
+  "faculty": "Arts and Social Science",
+  "gradingBasisDescription": "Graded",
+  "moduleCode": "SC3210",
+  "moduleCredit": "4",
+  "semesterData": [
+   {
+    "covidZones": [
+     "C"
+    ],
+    "semester": 1
+   }
+  ],
+  "title": "AI and Society",
+  "workload": [
+   2,
+   1,
+   0,
+   0,
+   7
+  ]
+ }
+]
