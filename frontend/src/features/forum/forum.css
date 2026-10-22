@@ -1,0 +1,117 @@
+.forum-page {
+  max-width: 48rem;
+  margin: 2rem auto;
+  padding: 0 1.5rem 4rem;
+}
+
+.forum-page header {
+  margin-bottom: 1.25rem;
+}
+
+.forum-page header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.25rem;
+}
+
+.forum-page header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.message-list {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+
+.message {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: white;
+  border: 1px solid #dbe2ea;
+}
+
+.message.own {
+  border-left: 0.3rem solid #2563eb;
+}
+
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.message-author {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.message-time {
+  color: #94a3b8;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.message-content {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-delete {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0;
+  min-height: unset;
+}
+
+.message-delete:hover {
+  color: #dc2626;
+}
+
+.load-older {
+  display: block;
+  width: 100%;
+  margin-bottom: 1rem;
+  background: white;
+  color: #2563eb;
+  border-color: #2563eb;
+}
+
+.composer {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.composer textarea {
+  width: 100%;
+  min-height: 4rem;
+  resize: vertical;
+  box-sizing: border-box;
+  border: 1px solid #94a3b8;
+  border-radius: 0.4rem;
+  padding: 0.5rem 0.7rem;
+  font: inherit;
+}
+
+.composer-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.char-count {
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.char-count.over {
+  color: #dc2626;
+}
