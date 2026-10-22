@@ -13,7 +13,7 @@ FROM dependencies AS source
 COPY --chown=node:node . .
 
 FROM source AS test
-CMD ["sh", "-c", "npm run lint && npm run format:check && npm run build"]
+CMD ["sh", "-c", "npm run lint && npm run format:check && npm test && npm run build"]
 
 FROM source AS build
 RUN npm run build
