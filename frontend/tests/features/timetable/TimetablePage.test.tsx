@@ -8,15 +8,26 @@ import {
   within,
 } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import TimetablePage from './TimetablePage.tsx'
-import { fetchModule, fetchModuleList } from './nusmodsApi.ts'
-import type { NusmodsModule, TimetableState } from './types.ts'
+import TimetablePage from '../../../src/features/timetable/TimetablePage.tsx'
+import {
+  fetchModule,
+  fetchModuleList,
+} from '../../../src/features/timetable/nusmodsApi.ts'
+import type {
+  NusmodsModule,
+  TimetableState,
+} from '../../../src/features/timetable/types.ts'
 
-vi.mock('./nusmodsApi.ts', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./nusmodsApi.ts')>()),
-  fetchModule: vi.fn(),
-  fetchModuleList: vi.fn(),
-}))
+vi.mock(
+  '../../../src/features/timetable/nusmodsApi.ts',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../../../src/features/timetable/nusmodsApi.ts')
+    >()),
+    fetchModule: vi.fn(),
+    fetchModuleList: vi.fn(),
+  }),
+)
 
 const STORAGE_KEY = 'lecture-kaki:timetable:v1'
 const module: NusmodsModule = {

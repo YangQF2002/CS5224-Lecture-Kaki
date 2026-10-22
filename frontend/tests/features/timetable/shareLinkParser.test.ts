@@ -1,12 +1,17 @@
 import { beforeEach, expect, it, vi } from 'vitest'
-import { fetchModule } from './nusmodsApi.ts'
+import { fetchModule } from '../../../src/features/timetable/nusmodsApi.ts'
 import {
   parseNusmodsShareLink,
   resolveImportedTimetable,
-} from './shareLinkParser.ts'
-import type { NusmodsModule, RawLesson } from './types.ts'
+} from '../../../src/features/timetable/shareLinkParser.ts'
+import type {
+  NusmodsModule,
+  RawLesson,
+} from '../../../src/features/timetable/types.ts'
 
-vi.mock('./nusmodsApi.ts', () => ({ fetchModule: vi.fn() }))
+vi.mock('../../../src/features/timetable/nusmodsApi.ts', () => ({
+  fetchModule: vi.fn(),
+}))
 
 const lesson: RawLesson = {
   classNo: '01',

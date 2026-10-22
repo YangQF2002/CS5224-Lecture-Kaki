@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
-import { lessonConflict } from './timetableUtils.ts'
-import type { TimetableLesson } from './types.ts'
+import { lessonConflict } from '../../../src/features/timetable/timetableUtils.ts'
+import type { TimetableLesson } from '../../../src/features/timetable/types.ts'
 
 const lesson: TimetableLesson = {
   moduleCode: 'CS1010',

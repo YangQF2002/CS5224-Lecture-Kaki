@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { getCurrentAcademicYear } from './nusmodsApi.ts'
+import { getCurrentAcademicYear } from '../../../src/features/timetable/nusmodsApi.ts'
 
 it.each([
   [new Date(2026, 6, 31), '2025-2026'],
