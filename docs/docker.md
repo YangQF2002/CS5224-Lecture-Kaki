@@ -50,7 +50,7 @@ python3 scripts/smoke_test.py
 
 The `test` profile keeps test services out of a normal `up`; explicitly running a
 test service enables it. Backend checks run Ruff and the offline pytest suite.
-Frontend checks run ESLint, Prettier, TypeScript, and the Vite build. The smoke
+Frontend checks run ESLint, Prettier, regression tests, TypeScript, and the Vite build. The smoke
 script requires Python 3 on the host and running runtime containers; it verifies
 public health, protected-route rejection, API docs, static assets, cache headers,
 and SPA fallback behavior. CI uses a single container job to build the images,

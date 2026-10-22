@@ -46,7 +46,4 @@ The pre-signup Lambda is packaged independently by `infra/auth.yaml`, because
 Cognito invokes it in AWS. It is included in the backend test image but excluded
 from the API runtime image.
 
-The frontend currently contains a landing page and has no API client or login UI.
-Its container serves static files on port 8080; the API listens on port 8000.
-When browser API calls are added, configure an explicit allowed frontend origin
-or put both behind a reverse proxy as part of that integration.
+The frontend timetable lives in `frontend/src/features/timetable/`. It reads NUSMods directly and saves selections in browser storage. Its Nginx container serves the site on port 8080; the API listens on port 8000.

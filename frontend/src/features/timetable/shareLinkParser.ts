@@ -1,28 +1,29 @@
-import { fetchModule } from "./nusmodsApi"
+import { fetchModule } from './nusmodsApi.ts'
 import type {
-    Day,
-    NusmodsModule,
-    ParsedShareLink,
-    RawLesson,
-    Semester,
-    ShareLessonReference,
-    TimetableSelection,
+  Day,
+  NusmodsModule,
+  ParsedShareLink,
+  RawLesson,
+  Semester,
+  ShareLessonReference,
+  TimetableSelection,
+  Weeks,
 } from './types.ts'
 
 const LESSON_TYPES: Record<string, string> = {
-    DLEC: 'Design Lecture',
-    LAB: 'Laboratory',
-    LEC: 'Lecture',
-    PLAB: 'Packaged Laboratory',
-    PLEC: 'Packaged Lecture',
-    PTUT: 'Packaged Tutorial',
-    REC: 'Recitation',
-    SEC: 'Sectional Teaching',
-    SEM: 'Seminar-Style Module Class',
-    TUT: 'Tutorial',
-    TUT2: 'Tutorial Type 2',
-    TUT3: 'Tutorial Type 3',
-    WS: 'Workshop',
+  DLEC: 'Design Lecture',
+  LAB: 'Laboratory',
+  LEC: 'Lecture',
+  PLAB: 'Packaged Laboratory',
+  PLEC: 'Packaged Lecture',
+  PTUT: 'Packaged Tutorial',
+  REC: 'Recitation',
+  SEC: 'Sectional Teaching',
+  SEM: 'Seminar-Style Module Class',
+  TUT: 'Tutorial',
+  TUT2: 'Tutorial Type 2',
+  TUT3: 'Tutorial Type 3',
+  WS: 'Workshop',
 }
 
 const ABBREVIATED_DAYS: Record<string, Day> = {
@@ -38,28 +39,28 @@ const ABBREVIATED_DAYS: Record<string, Day> = {
 const MODULE_CODE_PATTERN = /^[A-Z]{2,4}\s?\d{4}[A-Z0-9]{0,3}$/
 
 function splitLessonConfiguration(value: string): string[] {
-    const results: string[] = []
-    let start = 0
-    let parenthesisDepth = 0
+  const results: string[] = []
+  let start = 0
+  let parenthesisDepth = 0
 
-    for (let index = 0; index < value.length; index += 1) {
-        const character  = value[index]
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index]
 
-        if (character === '(') {
-            parenthesisDepth += 1
-        } else if (character === ')') {
-            parenthesisDepth -= 1
-        } else if (
-            parenthesisDepth === 0 &&
-            (character === ',' || character === ';')
-        ) {
-            results.push(value.slice(start, index))
-            start = index + 1
-        }
+    if (character === '(') {
+      parenthesisDepth += 1
+    } else if (character === ')') {
+      parenthesisDepth -= 1
+    } else if (
+      parenthesisDepth === 0 &&
+      (character === ',' || character === ';')
+    ) {
+      results.push(value.slice(start, index))
+      start = index + 1
     }
+  }
 
-    results.push(value.slice(start))
-    return results.filter(Boolean)
+  results.push(value.slice(start))
+  return results.filter(Boolean)
 }
 
 function parseLessonReference(value: string): ShareLessonReference {
@@ -98,15 +99,16 @@ export function parseNusmodsShareLink(input: string): ParsedShareLink {
     throw new Error('The link must be an HTTPS nusmods.com URL')
   }
 
-  const pathMatch = url.pathname.match(
-    /^\/timetable\/sem-([1-4])\/share\/?$/,
-  )
+  const pathMatch = url.pathname.match(/^\/timetable\/sem-([1-4])\/share\/?$/)
 
   if (!pathMatch) {
     throw new Error('This is not a NUSMods timetable share link')
   }
 
   const semester = Number(pathMatch[1]) as Semester
+  if (url.searchParams.get('ta')) {
+    throw new Error('TA timetable imports are not supported')
+  }
   const modules = []
 
   for (const [rawModuleCode, configuration] of url.searchParams.entries()) {
@@ -151,6 +153,29 @@ function getSemesterTimetable(
   return semesterData.timetable
 }
 
+function serializeWeeks(weeks: Weeks): string {
+  if (Array.isArray(weeks)) return weeks.length > 0 ? weeks.join('_') : '_'
+  // NUSMods encodes an omitted interval as 0, although it means weekly.
+  const range = [weeks.start, weeks.end, weeks.weekInterval ?? 0].join('_')
+  return weeks.weeks === undefined
+    ? range
+    : `${range}_${serializeWeeks(weeks.weeks)}`
+}
+
+function lessonIdentifier(lesson: RawLesson): string {
+  const day = Object.entries(ABBREVIATED_DAYS).find(
+    ([, value]) => value === lesson.day,
+  )?.[0]
+  return [
+    lesson.classNo,
+    day,
+    lesson.startTime,
+    lesson.endTime,
+    lesson.venue,
+    serializeWeeks(lesson.weeks),
+  ].join('|')
+}
+
 function resolveWrappedReference(
   reference: ShareLessonReference,
   timetable: RawLesson[],
@@ -165,63 +190,40 @@ function resolveWrappedReference(
     throw new Error(`No class specified for ${lessonType}`)
   }
 
-  // NUSMods V2 share links store zero-based timetable indexes.
-  if (identifiers.every((identifier) => /^\d+$/.test(identifier))) {
-    const matchedLessons = identifiers.map((identifier) => {
-      const lesson = timetable[Number(identifier)]
-
-      if (!lesson || lesson.lessonType !== lessonType) {
-        throw new Error(`Stale ${lessonType} selection`)
-      }
-
-      return lesson
-    })
-
-    const classNumbers = new Set(
-      matchedLessons.map((lesson) => lesson.classNo),
-    )
-
-    if (classNumbers.size !== 1) {
-      throw new Error(`The ${lessonType} selection is inconsistent`)
-    }
-
-    return matchedLessons[0].classNo
-  }
-
-  // NUSMods V3 stores:
-  // classNo|DAY|startTime|endTime|venue|weeks
+  // V2 uses timetable indexes; V3 uses complete lesson details, including weeks.
   const matchedLessons = identifiers.map((identifier) => {
-    const [classNo, abbreviatedDay, startTime, endTime, venue] =
-      identifier.split('|')
-    const day = ABBREVIATED_DAYS[abbreviatedDay]
+    const lesson = /^\d+$/.test(identifier)
+      ? timetable[Number(identifier)]
+      : timetable.find(
+          (candidate) =>
+            candidate.lessonType === lessonType &&
+            lessonIdentifier(candidate) === identifier,
+        )
 
-    if (!classNo || !day || !startTime || !endTime || venue === undefined) {
-      throw new Error(`Malformed ${lessonType} selection`)
-    }
-
-    const lesson = timetable.find(
-      (candidate) =>
-        candidate.lessonType === lessonType &&
-        candidate.classNo === classNo &&
-        candidate.day === day &&
-        candidate.startTime === startTime &&
-        candidate.endTime === endTime &&
-        candidate.venue === venue,
-    )
-
-    if (!lesson) {
+    if (!lesson || lesson.lessonType !== lessonType) {
       throw new Error(`Stale ${lessonType} selection`)
     }
 
     return lesson
   })
 
-  const classNumbers = new Set(
-    matchedLessons.map((lesson) => lesson.classNo),
-  )
+  const classNumbers = new Set(matchedLessons.map((lesson) => lesson.classNo))
 
   if (classNumbers.size !== 1) {
     throw new Error(`The ${lessonType} selection is inconsistent`)
+  }
+
+  // Restoring a class number expands every occurrence, so the link must contain the whole group.
+  const currentGroup = timetable.filter(
+    (lesson) =>
+      lesson.lessonType === lessonType &&
+      lesson.classNo === matchedLessons[0].classNo,
+  )
+  if (
+    currentGroup.length !== matchedLessons.length ||
+    currentGroup.some((lesson) => !matchedLessons.includes(lesson))
+  ) {
+    throw new Error(`Stale ${lessonType} selection`)
   }
 
   return matchedLessons[0].classNo
@@ -237,9 +239,7 @@ function resolveClassNumber(
     : reference.encodedValue
 
   const exists = timetable.some(
-    (lesson) =>
-      lesson.lessonType === lessonType &&
-      lesson.classNo === classNo,
+    (lesson) => lesson.lessonType === lessonType && lesson.classNo === classNo,
   )
 
   if (!exists) {
@@ -266,10 +266,7 @@ export async function resolveImportedTimetable(
           academicYear,
           moduleReference.moduleCode,
         )
-        const timetable = getSemesterTimetable(
-          module,
-          shareLink.semester,
-        )
+        const timetable = getSemesterTimetable(module, shareLink.semester)
 
         if (moduleReference.lessons.length === 0) {
           warnings.push(

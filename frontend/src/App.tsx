@@ -1,4 +1,4 @@
-import TimetablePage from "./features/timetable/TimetablePage"
+import TimetablePage from './features/timetable/TimetablePage'
 
 function App() {
   return <TimetablePage />

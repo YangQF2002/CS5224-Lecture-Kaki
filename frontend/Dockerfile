@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370 AS dependencies
+FROM node:24-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5 AS dependencies
 
 RUN mkdir /app && chown node:node /app
 WORKDIR /app
@@ -13,7 +13,7 @@ FROM dependencies AS source
 COPY --chown=node:node . .
 
 FROM source AS test
-CMD ["sh", "-c", "npm run lint && npm run format:check && npm run build"]
+CMD ["sh", "-c", "npm run lint && npm run format:check && npm test && npm run build"]
 
 FROM source AS build
 RUN npm run build

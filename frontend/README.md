@@ -13,5 +13,12 @@ npm ci
 npm run dev
 ```
 
-Checks: `npm run lint`, `npm run format:check`, `npm run typecheck`, and
-`npm run build`. Run `npm run format` to apply Prettier formatting.
+Open <http://localhost:5173>.
+
+Checks: `npm run lint`, `npm run format:check`, `npm test`, and `npm run build` (which also checks types). Run `npm run format` to apply Prettier formatting.
+
+## Timetable
+
+Choose an academic year (`YYYY-YYYY`) and semester, then search for modules and select lesson groups or import a NUSMods student timetable share link.
+
+Selections are saved in this browser when local storage is available. Changing year or semester clears the current selections. Possible timetable conflicts are highlighted.

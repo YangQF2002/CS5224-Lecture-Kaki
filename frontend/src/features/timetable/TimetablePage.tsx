@@ -1,17 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
-import {
-  fetchModule,
-  fetchModuleList,
-  getCurrentAcademicYear,
-  getDefaultSemester,
-} from './nusmodsApi.ts'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { fetchModule, fetchModuleList, isAcademicYear } from './nusmodsApi.ts'
 import {
   parseNusmodsShareLink,
   resolveImportedTimetable,
 } from './shareLinkParser.ts'
+import { loadTimetable, saveTimetable } from './timetableStorage.ts'
 import {
   expandSelections,
-  findConflictKeys,
+  findConflicts,
   getModuleTimetable,
   lessonKey,
 } from './timetableUtils.ts'
@@ -20,46 +16,62 @@ import type {
   NusmodsModule,
   Semester,
   TimetableSelection,
-  TimetableState,
 } from './types.ts'
 import './timetable.css'
 
-const STORAGE_KEY = 'lecture-kaki:timetable:v1'
-
-function initialState(): TimetableState {
-  const fallback: TimetableState = {
-    academicYear: getCurrentAcademicYear(),
-    semester: getDefaultSemester(),
-    selections: [],
-  }
-
-  const storedValue = localStorage.getItem(STORAGE_KEY)
-
-  if (!storedValue) {
-    return fallback
-  }
-
-  try {
-    return JSON.parse(storedValue) as TimetableState
-  } catch {
-    return fallback
-  }
-}
-
 function TimetablePage() {
-  const [timetable, setTimetable] = useState(initialState)
+  const [timetable, setTimetable] = useState(loadTimetable)
+  const [academicYearInput, setAcademicYearInput] = useState(
+    timetable.academicYear,
+  )
   const [moduleList, setModuleList] = useState<ModuleSummary[]>([])
   const [modules, setModules] = useState<Record<string, NusmodsModule>>({})
   const [moduleQuery, setModuleQuery] = useState('')
-  const [selectedModule, setSelectedModule] =
-    useState<NusmodsModule | null>(null)
+  const [selectedModule, setSelectedModule] = useState<NusmodsModule | null>(
+    null,
+  )
   const [groupChoices, setGroupChoices] = useState<Record<string, string>>({})
   const [shareLink, setShareLink] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const requestId = useRef(0)
+
+  function resetPicker() {
+    // An earlier request may finish after a term change or a newer picker action.
+    requestId.current += 1
+    setLoading(false)
+    setSelectedModule(null)
+    setModuleQuery('')
+    setGroupChoices({})
+  }
+
+  function changeTerm(academicYear: string, semester: Semester) {
+    if (
+      academicYear === timetable.academicYear &&
+      semester === timetable.semester
+    ) {
+      return
+    }
+    resetPicker()
+    setModules({})
+    if (academicYear !== timetable.academicYear) {
+      setModuleList([])
+    }
+    setTimetable({ academicYear, semester, selections: [] })
+    setMessage('')
+  }
+
+  function applyAcademicYear() {
+    if (!isAcademicYear(academicYearInput)) {
+      setMessage('Enter an academic year such as 2026-2027')
+      setAcademicYearInput(timetable.academicYear)
+      return
+    }
+    changeTerm(academicYearInput, timetable.semester)
+  }
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(timetable))
+    saveTimetable(timetable)
   }, [timetable])
 
   useEffect(() => {
@@ -93,9 +105,7 @@ function TimetablePage() {
   useEffect(() => {
     let cancelled = false
     const moduleCodes = [
-      ...new Set(
-        timetable.selections.map((selection) => selection.moduleCode),
-      ),
+      ...new Set(timetable.selections.map((selection) => selection.moduleCode)),
     ]
 
     async function loadSelectedModules() {
@@ -151,10 +161,7 @@ function TimetablePage() {
       return {}
     }
 
-    const lessons = getModuleTimetable(
-      selectedModule,
-      timetable.semester,
-    )
+    const lessons = getModuleTimetable(selectedModule, timetable.semester)
     const groups: Record<string, Set<string>> = {}
 
     for (const lesson of lessons) {
@@ -171,39 +178,32 @@ function TimetablePage() {
   }, [selectedModule, timetable.semester])
 
   const lessons = useMemo(
-    () =>
-      expandSelections(
-        timetable.selections,
-        modules,
-        timetable.semester,
-      ),
+    () => expandSelections(timetable.selections, modules, timetable.semester),
     [modules, timetable.selections, timetable.semester],
   )
 
-  const conflictKeys = useMemo(
-    () => findConflictKeys(lessons),
-    [lessons],
-  )
+  const conflicts = useMemo(() => findConflicts(lessons), [lessons])
 
   async function chooseModule(moduleCode: string) {
+    const currentRequest = ++requestId.current
     setLoading(true)
     setMessage('')
 
     try {
-      const module = await fetchModule(
-        timetable.academicYear,
-        moduleCode,
-      )
+      const module = await fetchModule(timetable.academicYear, moduleCode)
+
+      if (currentRequest !== requestId.current) return
 
       setSelectedModule(module)
       setModuleQuery(`${module.moduleCode} — ${module.title}`)
       setGroupChoices({})
     } catch (error) {
+      if (currentRequest !== requestId.current) return
       setMessage(
         error instanceof Error ? error.message : 'Unable to load module',
       )
     } finally {
-      setLoading(false)
+      if (currentRequest === requestId.current) setLoading(false)
     }
   }
 
@@ -212,9 +212,7 @@ function TimetablePage() {
       return
     }
 
-    const addedSelections: TimetableSelection[] = Object.entries(
-      groupChoices,
-    )
+    const addedSelections: TimetableSelection[] = Object.entries(groupChoices)
       .filter(([, classNo]) => classNo)
       .map(([lessonType, classNo]) => ({
         moduleCode: selectedModule.moduleCode,
@@ -228,12 +226,25 @@ function TimetablePage() {
       return
     }
 
+    if (
+      addedSelections.some(
+        ({ lessonType, classNo }) =>
+          !lessonGroups[lessonType]?.includes(classNo),
+      )
+    ) {
+      setMessage('Select lesson groups offered in the current term')
+      return
+    }
+
     setTimetable((current) => ({
       ...current,
       selections: [
         ...current.selections.filter(
           (selection) =>
-            selection.moduleCode !== selectedModule.moduleCode,
+            selection.moduleCode !== selectedModule.moduleCode ||
+            !addedSelections.some(
+              (added) => added.lessonType === selection.lessonType,
+            ),
         ),
         ...addedSelections,
       ],
@@ -246,6 +257,7 @@ function TimetablePage() {
   }
 
   async function importShareLink() {
+    const currentRequest = ++requestId.current
     setLoading(true)
     setMessage('')
 
@@ -255,6 +267,8 @@ function TimetablePage() {
         parsedLink,
         timetable.academicYear,
       )
+
+      if (currentRequest !== requestId.current) return
 
       if (result.selections.length === 0) {
         throw new Error(
@@ -277,6 +291,7 @@ function TimetablePage() {
         selections: result.selections,
       }))
 
+      resetPicker()
       setShareLink('')
       setMessage(
         result.warnings.length > 0
@@ -284,11 +299,10 @@ function TimetablePage() {
           : 'Timetable imported successfully',
       )
     } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : 'Import failed',
-      )
+      if (currentRequest !== requestId.current) return
+      setMessage(error instanceof Error ? error.message : 'Import failed')
     } finally {
-      setLoading(false)
+      if (currentRequest === requestId.current) setLoading(false)
     }
   }
 
@@ -312,15 +326,13 @@ function TimetablePage() {
         <label>
           Academic year
           <input
-            value={timetable.academicYear}
+            value={academicYearInput}
             pattern="\d{4}-\d{4}"
-            onChange={(event) =>
-              setTimetable({
-                academicYear: event.target.value,
-                semester: timetable.semester,
-                selections: [],
-              })
-            }
+            onChange={(event) => setAcademicYearInput(event.target.value)}
+            onBlur={applyAcademicYear}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.currentTarget.blur()
+            }}
           />
         </label>
 
@@ -329,11 +341,10 @@ function TimetablePage() {
           <select
             value={timetable.semester}
             onChange={(event) =>
-              setTimetable({
-                ...timetable,
-                semester: Number(event.target.value) as Semester,
-                selections: [],
-              })
+              changeTerm(
+                timetable.academicYear,
+                Number(event.target.value) as Semester,
+              )
             }
           >
             <option value={1}>Semester 1</option>
@@ -367,8 +378,8 @@ function TimetablePage() {
           value={moduleQuery}
           placeholder="Search by module code or title"
           onChange={(event) => {
+            resetPicker()
             setModuleQuery(event.target.value)
-            setSelectedModule(null)
           }}
         />
 
@@ -393,29 +404,27 @@ function TimetablePage() {
               {selectedModule.moduleCode}: {selectedModule.title}
             </h3>
 
-            {Object.entries(lessonGroups).map(
-              ([lessonType, classNumbers]) => (
-                <label key={lessonType}>
-                  {lessonType}
-                  <select
-                    value={groupChoices[lessonType] ?? ''}
-                    onChange={(event) =>
-                      setGroupChoices((current) => ({
-                        ...current,
-                        [lessonType]: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">Do not add</option>
-                    {classNumbers.map((classNo) => (
-                      <option key={classNo} value={classNo}>
-                        {classNo}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ),
-            )}
+            {Object.entries(lessonGroups).map(([lessonType, classNumbers]) => (
+              <label key={lessonType}>
+                {lessonType}
+                <select
+                  value={groupChoices[lessonType] ?? ''}
+                  onChange={(event) =>
+                    setGroupChoices((current) => ({
+                      ...current,
+                      [lessonType]: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Do not add</option>
+                  {classNumbers.map((classNo) => (
+                    <option key={classNo} value={classNo}>
+                      {classNo}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
 
             <button onClick={addSelectedGroups}>Add selected groups</button>
           </div>
@@ -432,9 +441,7 @@ function TimetablePage() {
         ) : (
           [
             ...new Set(
-              timetable.selections.map(
-                (selection) => selection.moduleCode,
-              ),
+              timetable.selections.map((selection) => selection.moduleCode),
             ),
           ].map((moduleCode) => (
             <div className="selected-module" key={moduleCode}>
@@ -442,10 +449,7 @@ function TimetablePage() {
                 <strong>{moduleCode}</strong>
                 <ul>
                   {timetable.selections
-                    .filter(
-                      (selection) =>
-                        selection.moduleCode === moduleCode,
-                    )
+                    .filter((selection) => selection.moduleCode === moduleCode)
                     .map((selection) => (
                       <li key={selection.lessonType}>
                         {selection.lessonType}: {selection.classNo}
@@ -453,9 +457,7 @@ function TimetablePage() {
                     ))}
                 </ul>
               </div>
-              <button onClick={() => removeModule(moduleCode)}>
-                Remove
-              </button>
+              <button onClick={() => removeModule(moduleCode)}>Remove</button>
             </div>
           ))
         )}
@@ -470,24 +472,26 @@ function TimetablePage() {
           <div className="lesson-list">
             {lessons.map((lesson) => {
               const key = lessonKey(lesson)
-              const hasConflict = conflictKeys.has(key)
+              const conflict = conflicts.get(key)
 
               return (
                 <article
-                  className={`lesson ${hasConflict ? 'conflict' : ''}`}
+                  className={`lesson ${conflict ? 'conflict' : ''}`}
                   key={key}
                 >
                   <div>
-                    <strong>{lesson.moduleCode}</strong>{' '}
-                    {lesson.lessonType} {lesson.classNo}
+                    <strong>{lesson.moduleCode}</strong> {lesson.lessonType}{' '}
+                    {lesson.classNo}
                   </div>
                   <div>
                     {lesson.day}, {lesson.startTime}–{lesson.endTime}
                   </div>
                   <div>{lesson.venue || 'Venue not announced'}</div>
-                  {hasConflict && (
+                  {conflict && (
                     <div className="conflict-label">
-                      Timetable conflict
+                      {conflict === 'confirmed'
+                        ? 'Timetable conflict'
+                        : 'Possible timetable conflict'}
                     </div>
                   )}
                 </article>
