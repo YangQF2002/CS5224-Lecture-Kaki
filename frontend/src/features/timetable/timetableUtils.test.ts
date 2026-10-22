@@ -56,6 +56,16 @@ it('compares actual dates for intervals and range-relative weeks', () => {
       },
     }),
   ).toBe('confirmed')
+  expect(
+    lessonConflict(fortnightly, {
+      ...lesson,
+      weeks: {
+        start: '2026-08-17',
+        end: '2026-08-31',
+        weeks: [1],
+      },
+    }),
+  ).toBeNull()
 })
 
 it('marks mixed week representations as possible rather than definite conflicts', () => {

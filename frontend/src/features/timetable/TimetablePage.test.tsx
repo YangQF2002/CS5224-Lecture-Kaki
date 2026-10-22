@@ -102,6 +102,59 @@ it('adds a tutorial without removing the existing lecture', async () => {
   expect(selectedModules().getByText('Tutorial: 01')).toBeTruthy()
 })
 
+it('restores an added lesson group after remounting', async () => {
+  const page = render(<TimetablePage />)
+  await chooseModule()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Lecture' }), {
+    target: { value: '1' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Add selected groups' }))
+
+  page.unmount()
+  render(<TimetablePage />)
+
+  expect(selectedModules().getByText('Lecture: 1')).toBeTruthy()
+})
+
+it('shows available lessons when a selected module fails and clears the warning after removal', async () => {
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify({
+      academicYear: '2026-2027',
+      semester: 1,
+      selections: ['CS1010', 'CS2040'].map((moduleCode) => ({
+        moduleCode,
+        moduleTitle: module.title,
+        lessonType: 'Lecture',
+        classNo: '1',
+      })),
+    }),
+  )
+  vi.mocked(fetchModule).mockImplementation(async (_year, moduleCode) => {
+    if (moduleCode === 'CS2040') throw new Error('NUSMods returned HTTP 404')
+    return module
+  })
+  render(<TimetablePage />)
+
+  await screen.findByText('Unable to load timetable for: CS2040.')
+  const schedule = within(
+    screen.getByRole('heading', { name: 'Weekly schedule' }).parentElement!,
+  )
+  const lessons = schedule.getAllByRole('article')
+  expect(lessons).toHaveLength(1)
+  expect(within(lessons[0]).getByText('CS1010')).toBeTruthy()
+
+  const failedModule = selectedModules()
+    .getByText('CS2040')
+    .closest<HTMLElement>('.selected-module')!
+  fireEvent.click(within(failedModule).getByRole('button', { name: 'Remove' }))
+  await waitFor(() =>
+    expect(
+      screen.queryByText('Unable to load timetable for: CS2040.'),
+    ).toBeNull(),
+  )
+})
+
 it('clears the picker when the semester changes', async () => {
   render(<TimetablePage />)
   await chooseModule()
@@ -174,11 +227,10 @@ it.each([
 ])('recovers invalid saved state: %s', (stored) => {
   localStorage.setItem(STORAGE_KEY, stored)
   render(<TimetablePage />)
-  expect(screen.getByRole('heading', { name: 'My timetable' })).toBeTruthy()
   expect(screen.getByText('No modules added yet.')).toBeTruthy()
 })
 
-it('remains usable when browser storage is unavailable', () => {
+it('falls back to an empty timetable when browser storage is unavailable', () => {
   vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
     throw new Error('Storage denied')
   })
@@ -186,7 +238,7 @@ it('remains usable when browser storage is unavailable', () => {
     throw new Error('Storage denied')
   })
   render(<TimetablePage />)
-  expect(screen.getByRole('heading', { name: 'My timetable' })).toBeTruthy()
+  expect(screen.getByText('No modules added yet.')).toBeTruthy()
 })
 
 it('does not clear a saved timetable or fetch incomplete years while editing the year', async () => {

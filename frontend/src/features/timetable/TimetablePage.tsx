@@ -33,6 +33,7 @@ function TimetablePage() {
   const [groupChoices, setGroupChoices] = useState<Record<string, string>>({})
   const [shareLink, setShareLink] = useState('')
   const [message, setMessage] = useState('')
+  const [moduleLoadError, setModuleLoadError] = useState('')
   const [loading, setLoading] = useState(false)
   const requestId = useRef(0)
 
@@ -109,24 +110,35 @@ function TimetablePage() {
     ]
 
     async function loadSelectedModules() {
-      const loadedModules = await Promise.all(
+      const results = await Promise.allSettled(
         moduleCodes.map((moduleCode) =>
           fetchModule(timetable.academicYear, moduleCode),
         ),
       )
 
       if (!cancelled) {
+        const loadedModules = results
+          .filter((result) => result.status === 'fulfilled')
+          .map((result) => result.value)
+        const failedModules = moduleCodes.filter(
+          (_, index) => results[index].status === 'rejected',
+        )
         setModules(
           Object.fromEntries(
             loadedModules.map((module) => [module.moduleCode, module]),
           ),
+        )
+        setModuleLoadError(
+          failedModules.length > 0
+            ? `Unable to load timetable for: ${failedModules.join(', ')}.`
+            : '',
         )
       }
     }
 
     void loadSelectedModules().catch((error: unknown) => {
       if (!cancelled) {
-        setMessage(
+        setModuleLoadError(
           error instanceof Error
             ? error.message
             : 'Unable to load timetable modules',
@@ -426,12 +438,15 @@ function TimetablePage() {
               </label>
             ))}
 
-            <button onClick={addSelectedGroups}>Add selected groups</button>
+            <button disabled={loading} onClick={addSelectedGroups}>
+              Add selected groups
+            </button>
           </div>
         )}
       </section>
 
       {message && <p className="status-message">{message}</p>}
+      {moduleLoadError && <p className="status-message">{moduleLoadError}</p>}
 
       <section className="panel">
         <h2>Selected modules</h2>
@@ -457,7 +472,12 @@ function TimetablePage() {
                     ))}
                 </ul>
               </div>
-              <button onClick={() => removeModule(moduleCode)}>Remove</button>
+              <button
+                disabled={loading}
+                onClick={() => removeModule(moduleCode)}
+              >
+                Remove
+              </button>
             </div>
           ))
         )}
