@@ -15,6 +15,11 @@ The frontend is at <http://localhost:8080>, and the API docs are at
 <http://localhost:8000/docs>. Both services have health checks; `--wait` waits for
 both to become healthy. Published ports bind to the local machine.
 
+The frontend serves `backend/out/ingest/lectures/` at `/lectures/` for lecture
+discovery. Generate it with `scripts/ingest_local.py` (see
+[lecture data](lecture-data.md#local-development)); until then, the Discover page
+reports that lecture data is unavailable.
+
 Compose reads optional runtime configuration from `backend/.env.local`. Create
 it from `backend/.env.example` only if it does not exist, then fill in the public
 Cognito values from your stack outputs. Environment files and credentials are

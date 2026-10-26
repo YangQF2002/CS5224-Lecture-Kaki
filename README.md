@@ -39,10 +39,11 @@ The smoke test requires the runtime containers to be running. See
 
 ## Current features
 
+- Lecture discovery by week, day, time, building, subject code, faculty, level, class size, and keywords, with shareable filter links.
 - Personal timetable with module and lesson-group selection, NUSMods import, browser-local saving, and clash highlighting.
 
 ## Planned features
 
-- Lecture discovery by faculty, timing, and interests.
+- Interest topics for lecture discovery.
 - Lecture recommendations that fit interests and free time.
 - Session discussions to connect with other students and find companions.

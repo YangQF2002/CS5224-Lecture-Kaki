@@ -100,8 +100,8 @@ and `COGNITO_DOMAIN`; no AWS keys or client secret.
   `Authorization` and `Content-Type` headers.
 - **Frontend login:** callback, refresh and logout; register the exact callback
   and logout URLs in Cognito.
-- **Lecture discovery:** read snapshots from `/lectures/` on the same origin; the
-  timetable still calls NUSMods directly.
+- **Lecture discovery P2–P4:** interest topics, timetable-aware suggestions and
+  login features; see [lecture discovery](lecture-discovery.md).
 
 Timetable selections stay in browser storage; account-based persistence would
 need a separate API and database.
@@ -115,6 +115,7 @@ References: [authentication](authentication.md), [lecture data](lecture-data.md)
 
 ```text
 frontend/src/features/
+  discovery/              Lecture discovery page; filters static /lectures/ data
   timetable/              Timetable UI, NUSMods import, clash detection, storage
 backend/
   app/                    FastAPI application and API modules

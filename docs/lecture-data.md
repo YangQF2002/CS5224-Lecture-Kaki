@@ -78,13 +78,13 @@ poetry run python scripts/ingest_local.py
 
 Output goes to `backend/out/ingest/lectures/`. Use `--date YYYY-MM-DD` to select a semester or `--out` for another subdirectory of `backend/out`. Existing files are preserved.
 
-To serve the output from the repository root:
+The Docker Compose frontend serves this output at <http://localhost:8080/lectures/>. For the Vite dev server, serve it from the repository root; Vite proxies `/lectures` to port 8001:
 
 ```sh
 python -m http.server 8001 --directory backend/out/ingest
 ```
 
-Use a Vite proxy for `/lectures` to `http://localhost:8001`; the static server does not provide CORS headers.
+To use deployed data instead, start Vite with `LECTURES_ORIGIN=https://<WebsiteURL>`.
 
 ## Deployment
 

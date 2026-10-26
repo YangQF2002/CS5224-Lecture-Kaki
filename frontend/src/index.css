@@ -21,3 +21,107 @@ input,
 select {
   font: inherit;
 }
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid #dbe2ea;
+  background: white;
+}
+
+.app-brand {
+  color: #1d4ed8;
+  font-size: 1.15rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.app-nav {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.app-nav a {
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.4rem;
+  color: #334155;
+  text-decoration: none;
+}
+
+.app-nav a:hover {
+  background: #eff6ff;
+}
+
+.app-nav a.active {
+  color: #1d4ed8;
+  font-weight: 600;
+  background: #eff6ff;
+}
+
+.panel {
+  margin-bottom: 1.25rem;
+  padding: 1.25rem;
+  border: 1px solid #dbe2ea;
+  border-radius: 0.75rem;
+  background: white;
+}
+
+.panel h2 {
+  margin-top: 0;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+input,
+select,
+button {
+  min-height: 2.5rem;
+  box-sizing: border-box;
+  border: 1px solid #94a3b8;
+  border-radius: 0.4rem;
+  padding: 0.5rem 0.7rem;
+  font: inherit;
+}
+
+input {
+  width: 100%;
+}
+
+input[type='checkbox'] {
+  width: auto;
+  min-height: 0;
+}
+
+button {
+  cursor: pointer;
+  color: white;
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+button.secondary {
+  color: #1f2937;
+  background: white;
+  border-color: #94a3b8;
+}
+
+button.secondary:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.status-message {
+  padding: 0.75rem;
+  border-radius: 0.4rem;
+  background: #fef3c7;
+}

@@ -1,0 +1,252 @@
+.discover-page {
+  max-width: 76rem;
+  margin: 2rem auto;
+  padding: 0 1.5rem 4rem;
+}
+
+.discover-header {
+  margin-bottom: 1.5rem;
+}
+
+.discover-header h1 {
+  margin: 0 0 0.25rem;
+}
+
+.discover-header p {
+  margin: 0;
+}
+
+.data-note {
+  color: #64748b;
+}
+
+.discover-layout {
+  display: grid;
+  grid-template-columns: 21rem minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.discover-filters {
+  position: sticky;
+  top: 1rem;
+  display: grid;
+  gap: 1rem;
+  max-height: calc(100vh - 2rem);
+  margin: 0;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.discover-filters fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.discover-filters legend {
+  margin-bottom: 0.35rem;
+  padding: 0;
+}
+
+.filter-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+button.chip {
+  min-height: 2rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  color: #1f2937;
+  background: white;
+  border-color: #cbd5e1;
+}
+
+button.chip[aria-pressed='true'] {
+  color: white;
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.time-range {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.time-range input {
+  min-width: 0;
+  padding-inline: 0.5rem;
+}
+
+label.checkbox {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.multi-select {
+  border: 1px solid #94a3b8;
+  border-radius: 0.4rem;
+}
+
+.multi-select summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0.7rem;
+  cursor: pointer;
+}
+
+.multi-select-summary {
+  overflow: hidden;
+  color: #64748b;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-select-body {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0 0.7rem 0.7rem;
+}
+
+.multi-select-options {
+  max-height: 14rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.multi-select-options label {
+  padding: 0.2rem 0;
+}
+
+.option-count {
+  margin-left: auto;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.multi-select-empty {
+  color: #64748b;
+}
+
+.drop-in-note {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.4rem;
+  color: #1e3a8a;
+  background: #eff6ff;
+}
+
+.results-count {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.day-group h2 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 1rem 0 0.5rem;
+  padding: 0.35rem 0;
+  font-size: 1.1rem;
+  background: #f8fafc;
+}
+
+.session-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.session-card {
+  display: grid;
+  grid-template-columns: 6.5rem minmax(0, 1fr);
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #dbe2ea;
+  border-left: 0.3rem solid #2563eb;
+  border-radius: 0.5rem;
+  background: white;
+}
+
+.session-time {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-card h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.session-code {
+  color: #1d4ed8;
+}
+
+.session-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin: 0.25rem 0 0;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.session-details summary {
+  margin-top: 0.35rem;
+  color: #1d4ed8;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.session-details p {
+  margin: 0.5rem 0;
+}
+
+.session-details a {
+  color: #1d4ed8;
+  font-size: 0.9rem;
+}
+
+.show-more {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.discover-layout > * {
+  min-width: 0;
+}
+
+@media (max-width: 52rem) {
+  .discover-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .discover-filters {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 30rem) {
+  .discover-page {
+    padding: 0 1rem 3rem;
+  }
+
+  .session-card {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}
