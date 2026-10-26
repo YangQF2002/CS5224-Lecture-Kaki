@@ -18,6 +18,7 @@ docker compose up --build -d --wait
 
 To test Cognito login through the API docs, create `backend/.env.local` from [`backend/.env.example`](backend/.env.example) if it does not already exist, and fill in the deployed Cognito configuration. Recreate the API after editing it: `docker compose up -d --force-recreate backend`.
 The stack also starts without this file for UI and public health checks.
+To deploy your own Cognito and ingestion stacks, see [personal AWS setup](docs/aws-dev-setup.md).
 
 ```sh
 docker compose run --build --rm backend-test

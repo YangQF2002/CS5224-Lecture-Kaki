@@ -1,0 +1,32 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: LectureKaki website bucket for the React build and lecture snapshots.
+
+Parameters:
+  Env:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+
+Resources:
+  WebBucket:
+    Type: AWS::S3::Bucket
+    # Lecture snapshots and the site outlive any single stack update.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub 'lecturekaki-${Env}-web-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+Outputs:
+  WebBucketName:
+    Value: !Ref WebBucket
+    Export:
+      Name: !Sub 'lecture-kaki-hosting-${Env}-WebBucketName'
+  WebBucketArn:
+    Value: !GetAtt WebBucket.Arn
+    Export:
+      Name: !Sub 'lecture-kaki-hosting-${Env}-WebBucketArn'

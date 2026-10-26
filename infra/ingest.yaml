@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: LectureKaki lecture ingestion and shared website bucket.
+Description: LectureKaki lecture ingestion into the hosting stack's website bucket.
 
 Parameters:
   Env:
@@ -16,16 +16,6 @@ Conditions:
   HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
 
 Resources:
-  WebBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub 'lecturekaki-${Env}-web-${AWS::AccountId}'
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-
   IngestFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -38,17 +28,22 @@ Resources:
       MemorySize: 1024
       Environment:
         Variables:
-          WEB_BUCKET: !Ref WebBucket
+          WEB_BUCKET: !ImportValue
+            Fn::Sub: 'lecture-kaki-hosting-${Env}-WebBucketName'
       Policies:
         - Version: '2012-10-17'
           Statement:
             - Effect: Allow
               Action: [s3:GetObject, s3:PutObject]
-              Resource: !Sub '${WebBucket.Arn}/lectures/*'
+              Resource: !Sub
+                - '${WebBucketArn}/lectures/*'
+                - WebBucketArn: !ImportValue
+                    Fn::Sub: 'lecture-kaki-hosting-${Env}-WebBucketArn'
             # S3 needs ListBucket to return 404 rather than 403 for a missing pointer.
             - Effect: Allow
               Action: s3:ListBucket
-              Resource: !GetAtt WebBucket.Arn
+              Resource: !ImportValue
+                Fn::Sub: 'lecture-kaki-hosting-${Env}-WebBucketArn'
       Events:
         EveryMonday:
           Type: ScheduleV2
@@ -98,8 +93,6 @@ Resources:
       AlarmActions: [!Ref AlertTopic]
 
 Outputs:
-  WebBucketName:
-    Value: !Ref WebBucket
   IngestFunctionName:
     Value: !Ref IngestFunction
   AlertTopicArn:

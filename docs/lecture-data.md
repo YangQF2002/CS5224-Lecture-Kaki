@@ -96,16 +96,19 @@ poetry run python scripts/package_ingest.py
 
 This creates `build/ingest.zip` with `jobs/__init__.py`, the `jobs/lecture_ingest/` package and SDK dependencies constrained by `poetry.lock`. Other jobs and the API are excluded. The Lambda entry point is `jobs.lecture_ingest.handler.handler`. Rebuild after source or dependency changes.
 
-From the repository root, use the shared development profile and a private artifact bucket to prepare a change set:
+The lecture files are written to the website bucket owned by the hosting stack ([`infra/hosting.yaml`](../infra/hosting.yaml)), which exports its name and ARN. Deploy hosting before ingestion with the same `Env`. The bucket is retained when the hosting stack is deleted, and the ingestion stack cannot be deployed without its exports.
+
+From the repository root, use the shared development profile and a private artifact bucket to prepare change sets:
 
 ```powershell
 $awsProfile = 'cs5224-dev'
 $artifactBucket = '<private-artifact-bucket>'
-aws cloudformation package --template-file infra/template.yaml --s3-bucket $artifactBucket --s3-prefix lecture-kaki/ingest --output-template-file build/ingest.packaged.yaml --region ap-southeast-1 --profile $awsProfile
-aws cloudformation deploy --template-file build/ingest.packaged.yaml --stack-name lecturekaki-dev --parameter-overrides Env=dev --capabilities CAPABILITY_IAM --no-execute-changeset --region ap-southeast-1 --profile $awsProfile
+aws cloudformation deploy --template-file infra/hosting.yaml --stack-name lecture-kaki-hosting-dev --parameter-overrides Env=dev --no-execute-changeset --region ap-southeast-1 --profile $awsProfile
+aws cloudformation package --template-file infra/ingest.yaml --s3-bucket $artifactBucket --s3-prefix lecture-kaki/ingest --output-template-file build/ingest.packaged.yaml --region ap-southeast-1 --profile $awsProfile
+aws cloudformation deploy --template-file build/ingest.packaged.yaml --stack-name lecture-kaki-ingest-dev --parameter-overrides Env=dev --capabilities CAPABILITY_IAM --no-execute-changeset --region ap-southeast-1 --profile $awsProfile
 ```
 
-Review and execute the change set, then read `WebBucketName` and `IngestFunctionName` from the stack outputs. This stack is separate from authentication. Connect its private bucket to CloudFront when deploying the website.
+Review and execute the hosting change set before creating the ingestion change set. Read `WebBucketName` from the hosting stack outputs and `IngestFunctionName` from the ingestion stack outputs. Both stacks are separate from authentication. For a personal account, see [personal AWS setup](aws-dev-setup.md).
 
 ## Scheduling and recovery
 
