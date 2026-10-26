@@ -8,18 +8,6 @@
   margin-bottom: 2rem;
 }
 
-.panel {
-  margin-bottom: 1.25rem;
-  padding: 1.25rem;
-  border: 1px solid #dbe2ea;
-  border-radius: 0.75rem;
-  background: white;
-}
-
-.panel h2 {
-  margin-top: 0;
-}
-
 .term-controls,
 .inline-form {
   display: flex;
@@ -29,38 +17,6 @@
 
 .term-controls label {
   flex: 1;
-}
-
-label {
-  display: grid;
-  gap: 0.35rem;
-}
-
-input,
-select,
-button {
-  min-height: 2.5rem;
-  box-sizing: border-box;
-  border: 1px solid #94a3b8;
-  border-radius: 0.4rem;
-  padding: 0.5rem 0.7rem;
-  font: inherit;
-}
-
-input {
-  width: 100%;
-}
-
-button {
-  cursor: pointer;
-  color: white;
-  background: #2563eb;
-  border-color: #2563eb;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
 }
 
 .inline-form input {
@@ -126,12 +82,6 @@ button:disabled {
   margin-top: 0.35rem;
   color: #b91c1c;
   font-weight: 600;
-}
-
-.status-message {
-  padding: 0.75rem;
-  border-radius: 0.4rem;
-  background: #fef3c7;
 }
 
 @media (max-width: 40rem) {
