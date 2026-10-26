@@ -1,7 +1,7 @@
 import pytest
 
-from ingest.academic_calendar import SEMESTERS
-from ingest.transform import (
+from jobs.lecture_ingest.academic_calendar import SEMESTERS
+from jobs.lecture_ingest.transform import (
     build_modules,
     build_sessions,
     module_level,

@@ -6,10 +6,8 @@
 !app/**
 !lambdas/
 !lambdas/**
-!handlers/
-!handlers/**
-!ingest/
-!ingest/**
+!jobs/
+!jobs/**
 !scripts/
 !scripts/**
 !tests/

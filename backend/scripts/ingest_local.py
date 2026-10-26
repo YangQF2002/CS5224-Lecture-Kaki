@@ -13,7 +13,7 @@ from moto import mock_aws
 BACKEND = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND))
 
-from handlers.ingest import handler
+from jobs.lecture_ingest.handler import handler
 
 BUCKET = "lecturekaki-local-web"
 REGION = "ap-southeast-1"

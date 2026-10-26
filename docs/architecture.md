@@ -1,9 +1,34 @@
 # Architecture
 
-LectureKaki uses a modular monolith: business modules run in one FastAPI process
-and are released together as one backend image. The React frontend is compiled
-and served by a separate Nginx container. Cognito and its pre-signup Lambda remain
-AWS-managed authentication infrastructure.
+LectureKaki groups code by where it runs. The React frontend runs in the browser
+and is served by Nginx. The FastAPI application is a modular monolith: its API
+modules run in one process and are released together as one backend image.
+Scheduled jobs and Cognito triggers are packaged separately for AWS Lambda.
+
+```text
+frontend/src/features/
+  timetable/              Browser UI, NUSMods import, clash detection and storage
+backend/
+  app/                    FastAPI application and API modules
+  jobs/
+    __init__.py           Background jobs package
+    lecture_ingest/       Scheduled job, packaged as its own Lambda
+      handler.py          Lambda entry point
+      academic_calendar.py
+      lesson_types.py
+      nusmods.py
+      publish.py
+      transform.py
+      venues.py
+  lambdas/
+    pre_signup/           Cognito event trigger
+  scripts/                Local execution and packaging tools
+  tests/
+    jobs/lecture_ingest/   Job tests and fixtures
+infra/                    AWS resource definitions
+```
+
+Within the API, feature modules have the following structure:
 
 ```text
 backend/app/
@@ -46,4 +71,15 @@ The pre-signup Lambda is packaged independently by `infra/auth.yaml`, because
 Cognito invokes it in AWS. It is included in the backend test image but excluded
 from the API runtime image.
 
-The frontend timetable lives in `frontend/src/features/timetable/`. It reads NUSMods directly and saves selections in browser storage. Its Nginx container serves the site on port 8080; the API listens on port 8000.
+The scheduled ingestion job keeps its handler and processing code together in
+`backend/jobs/lecture_ingest/`. `backend/scripts/package_ingest.py` packages this
+job and its SDK dependencies; `infra/template.yaml` configures the Lambda entry
+point as `jobs.lecture_ingest.handler.handler`. The job publishes lecture JSON
+snapshots to S3. It is included in the backend test image and excluded from the
+API runtime image. `backend/scripts/ingest_local.py` runs the same handler with
+in-memory S3 for local development.
+
+The frontend timetable lives in `frontend/src/features/timetable/`. It reads
+NUSMods directly and saves selections in browser storage. It currently operates
+independently of API authentication and the ingested lecture snapshots. Its
+Nginx container serves the site on port 8080; the API listens on port 8000.

@@ -1,8 +1,13 @@
 # LectureKaki backend
 
 For container startup and checks, see [Docker setup](../docs/docker.md).
-The API is a [modular monolith](../docs/architecture.md), composed in
-`app/main.py`; authentication lives in `app/modules/auth/`.
+See [architecture](../docs/architecture.md) for the repository layout and execution boundaries:
+
+- `app/`: the FastAPI application, composed in `app/main.py`, with authentication in `app/modules/auth/`.
+- `jobs/lecture_ingest/`: the scheduled ingestion handler and its data processing code, packaged as a separate Lambda.
+- `lambdas/pre_signup/`: the Cognito signup validation trigger.
+- `scripts/`: local execution and packaging tools.
+- `tests/`: API, trigger, and job tests.
 
 Python 3.14 and Poetry.
 
@@ -34,5 +39,7 @@ See [authentication](../docs/authentication.md) for the flow, integration detail
 ## Lecture data ingestion
 
 Generate lecture data locally with `poetry run python scripts/ingest_local.py`. This reads public NUSMods data and uses in-memory S3; it does not access AWS.
+
+The implementation lives in `jobs/lecture_ingest/`; its Lambda entry point is `jobs.lecture_ingest.handler.handler`.
 
 See [lecture data](../docs/lecture-data.md) for the output contract, Lambda packaging, deployment and manual ingestion.

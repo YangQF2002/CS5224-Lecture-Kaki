@@ -94,7 +94,7 @@ Build the Lambda ZIP from `backend/`:
 poetry run python scripts/package_ingest.py
 ```
 
-This creates `build/ingest.zip` with the ingestion code and SDK dependencies constrained by `poetry.lock`. Rebuild after source or dependency changes.
+This creates `build/ingest.zip` with `jobs/__init__.py`, the `jobs/lecture_ingest/` package and SDK dependencies constrained by `poetry.lock`. Other jobs and the API are excluded. The Lambda entry point is `jobs.lecture_ingest.handler.handler`. Rebuild after source or dependency changes.
 
 From the repository root, use the shared development profile and a private artifact bucket to prepare a change set:
 
@@ -121,12 +121,12 @@ Check the response for `FunctionError` and confirm the published `path` matches 
 
 - Retain previous snapshots for rollback; remove unused snapshots and incomplete uploads after clients no longer need them.
 - To roll back, repoint `current.json` to a complete retained snapshot, with its academic year, semester and generation time. Preserve the `no-cache` header.
-- Update semester and holiday entries in `academic_calendar.py` before each new academic year.
+- Update semester and holiday entries in `backend/jobs/lecture_ingest/academic_calendar.py` before each new academic year.
 
 ## Testing and format changes
 
-Run `poetry run python -m pytest tests/ingest` from `backend/`. Tests use local fixtures and in-memory S3 without contacting AWS or NUSMods. Fixture samples use AY2026/27 Semester 1 data with descriptions shortened to 120 characters.
+Run `poetry run python -m pytest tests/jobs/lecture_ingest` from `backend/`. Tests use local fixtures and in-memory S3 without contacting AWS or NUSMods. Fixture samples use AY2026/27 Semester 1 data with descriptions shortened to 120 characters.
 
 Before deployment, inspect the ZIP and verify the packaged handler imports. After deployment, check a manual invocation, the schedule timezone and any failure-alert subscription.
 
-Session/module fields are defined in `ingest/transform.py`; file layout is defined in `ingest/publish.py`. Coordinate breaking format changes with consumers and update this guide in the same PR.
+Session/module fields are defined in `backend/jobs/lecture_ingest/transform.py`; file layout is defined in `backend/jobs/lecture_ingest/publish.py`. Coordinate breaking format changes with consumers and update this guide in the same PR.

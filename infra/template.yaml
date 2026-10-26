@@ -30,7 +30,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: ../build/ingest.zip
-      Handler: handlers.ingest.handler
+      Handler: jobs.lecture_ingest.handler.handler
       Runtime: python3.14
       Architectures: [x86_64]
       Description: NUSMods -> lecture JSON in the web bucket
