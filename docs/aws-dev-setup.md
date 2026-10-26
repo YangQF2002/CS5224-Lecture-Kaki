@@ -1,6 +1,6 @@
 # Personal AWS development setup
 
-Deploy the auth, hosting and ingestion stacks to your own AWS account in `ap-southeast-1`. Requires AWS CLI v2 and Python 3.11+. Run commands from the repository root.
+Deploy the auth, hosting and ingestion stacks and the frontend to your own AWS account in `ap-southeast-1`. Requires AWS CLI v2, Python 3.11+ and Docker. Run commands from the repository root.
 
 ## 1. Configure the CLI profile
 
@@ -59,7 +59,7 @@ COGNITO_DOMAIN=<HostedDomain>
 
 ## 4. Deploy hosting
 
-Deploy before ingestion, which uses this stack's bucket.
+Creates the web bucket and CloudFront distribution. Deploy before ingestion, which uses this stack's bucket.
 
 ```sh
 aws cloudformation deploy --template-file infra/hosting.yaml \
@@ -67,6 +67,8 @@ aws cloudformation deploy --template-file infra/hosting.yaml \
 
 WEB_BUCKET=$(aws cloudformation describe-stacks --stack-name lecture-kaki-hosting-dev \
   --query "Stacks[0].Outputs[?OutputKey=='WebBucketName'].OutputValue" --output text)
+WEBSITE_URL=$(aws cloudformation describe-stacks --stack-name lecture-kaki-hosting-dev \
+  --query "Stacks[0].Outputs[?OutputKey=='WebsiteURL'].OutputValue" --output text)
 ```
 
 ## 5. Deploy ingestion
@@ -95,6 +97,23 @@ aws lambda invoke --function-name $INGEST_FUNCTION \
   build/ingest-result.json
 cat build/ingest-result.json
 aws s3 cp s3://$WEB_BUCKET/lectures/current.json -
+```
+
+## 6. Deploy the frontend
+
+Build with Docker (or `npm ci && npm run build` in `frontend/` with Node 24), then upload. Hashed assets are cached for a year and `index.html` is always revalidated, so no CloudFront invalidation is needed. The `lectures/*` exclusion keeps `--delete` from removing lecture data.
+
+```sh
+docker build --target build -t lecture-kaki-frontend-build frontend
+id=$(docker create lecture-kaki-frontend-build)
+rm -rf frontend/dist && docker cp $id:/app/dist frontend/dist && docker rm $id
+
+aws s3 sync frontend/dist/assets/ s3://$WEB_BUCKET/assets/ \
+  --cache-control "public, max-age=31536000, immutable"
+aws s3 sync frontend/dist/ s3://$WEB_BUCKET/ --delete \
+  --exclude "assets/*" --exclude "lectures/*" --cache-control "no-cache"
+
+echo $WEBSITE_URL
 ```
 
 ## Clean up

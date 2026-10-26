@@ -65,9 +65,21 @@ artifact bucket.
 | Stack | Template | Owns | Status |
 | --- | --- | --- | --- |
 | `auth` | `infra/auth.yaml` | Cognito user pool, hosted login, pre-signup Lambda | Template ready |
-| `hosting` | `infra/hosting.yaml` | Web bucket (exports name and ARN); CloudFront to be added | Bucket only |
+| `hosting` | `infra/hosting.yaml` | Web bucket (exports name and ARN), CloudFront with OAC, app routing function | Template ready |
 | `ingest` | `infra/ingest.yaml` | Ingestion Lambda, schedule, logs, failure alarm | Template ready |
 | `api` | — | EC2, Caddy, FastAPI container | Not started |
+
+### Website hosting
+
+CloudFront reads the private bucket through OAC and caches by each object's
+`Cache-Control` header (minimum TTL 0). A viewer-request function serves
+`index.html` for extensionless paths such as `/auth/callback`; `/assets/*` and
+`/lectures/*` are passed through, so missing files stay errors. Responses carry
+the managed security headers policy.
+
+Upload builds with `assets/` as `immutable` and the rest as `no-cache`, and
+exclude `lectures/*` so `--delete` keeps lecture data; see
+[personal AWS setup](aws-dev-setup.md#6-deploy-the-frontend).
 
 ### Login and API access
 
@@ -88,11 +100,8 @@ and `COGNITO_DOMAIN`; no AWS keys or client secret.
   `Authorization` and `Content-Type` headers.
 - **Frontend login:** callback, refresh and logout; register the exact callback
   and logout URLs in Cognito.
-- **CloudFront:** OAC to the bucket; serve `index.html` for app routes only, so
-  missing `/lectures/*` files stay errors; follow the
-  [lecture-data](lecture-data.md) cache headers.
-- **Frontend upload:** keep lecture data when syncing:
-  `aws s3 sync frontend/dist/ s3://<WebBucketName> --delete --exclude "lectures/*"`.
+- **Lecture discovery:** read snapshots from `/lectures/` on the same origin; the
+  timetable still calls NUSMods directly.
 
 Timetable selections stay in browser storage; account-based persistence would
 need a separate API and database.

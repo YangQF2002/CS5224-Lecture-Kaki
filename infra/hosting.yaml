@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: LectureKaki website bucket for the React build and lecture snapshots.
+Description: LectureKaki website bucket and CloudFront distribution for the React build and lecture snapshots.
 
 Parameters:
   Env:
@@ -21,6 +21,110 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
+  WebBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${WebBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
+          # Lets S3 return 404 rather than 403 for missing files.
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:ListBucket
+            Resource: !GetAtt WebBucket.Arn
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
+
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub 'lecture-kaki-hosting-${Env}-web'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # Caches according to the Cache-Control headers set on upload and by ingestion.
+  OriginCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub 'lecture-kaki-hosting-${Env}-origin-cache-control'
+        MinTTL: 0
+        DefaultTTL: 0
+        MaxTTL: 31536000
+        ParametersInCacheKeyAndForwardedToOrigin:
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+          HeadersConfig:
+            HeaderBehavior: none
+          CookiesConfig:
+            CookieBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+
+  AppRoutingFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub 'lecture-kaki-hosting-${Env}-app-routing'
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Serve index.html for React routes
+        Runtime: cloudfront-js-2.0
+      # Missing lecture JSON and assets must stay errors rather than return the app.
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+          if (uri.startsWith('/lectures/') || uri.startsWith('/assets/')) {
+            return request;
+          }
+          if (uri.split('/').pop().indexOf('.') === -1) {
+            request.uri = '/index.html';
+          }
+          return request;
+        }
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub 'LectureKaki ${Env} website'
+        Enabled: true
+        HttpVersion: http2and3
+        # Includes edge locations in Asia.
+        PriceClass: PriceClass_200
+        DefaultRootObject: index.html
+        Origins:
+          - Id: web-bucket
+            DomainName: !GetAtt WebBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        DefaultCacheBehavior:
+          TargetOriginId: web-bucket
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: !Ref OriginCachePolicy
+          # Managed SecurityHeadersPolicy
+          ResponseHeadersPolicyId: 67f7725c-6f97-4210-82d7-5512b31e9d03
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt AppRoutingFunction.FunctionMetadata.FunctionARN
+
 Outputs:
   WebBucketName:
     Value: !Ref WebBucket
@@ -30,3 +134,7 @@ Outputs:
     Value: !GetAtt WebBucket.Arn
     Export:
       Name: !Sub 'lecture-kaki-hosting-${Env}-WebBucketArn'
+  DistributionId:
+    Value: !Ref Distribution
+  WebsiteURL:
+    Value: !Sub 'https://${Distribution.DomainName}'

@@ -22,7 +22,7 @@ lectures/
 
 Each run uploads a complete snapshot before switching `current.json`. A failure before the switch leaves the previous snapshot active. Empty catalogues, missing required module metadata, empty session lists and session counts below half the previous run in the same semester are rejected.
 
-Snapshot files use `Cache-Control: public, max-age=86400, immutable`; `current.json` uses `no-cache`. Configure CloudFront to respect these headers, with a minimum TTL of zero for the pointer.
+Snapshot files use `Cache-Control: public, max-age=86400, immutable`; `current.json` uses `no-cache`. The hosting stack's CloudFront cache policy follows these headers with a minimum TTL of zero, so the pointer is always revalidated.
 
 ## Schemas
 
