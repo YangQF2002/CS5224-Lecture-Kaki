@@ -2,7 +2,8 @@
 
 ONLINE_PREFIXES = ("E-Learn", "E-Hybrid")
 
-# Lecture theatre codes do not identify their buildings; unmapped venues return None.
+# Lecture theatre and other unprefixed venue codes do not identify their buildings;
+# unmapped venues return None.
 LECTURE_THEATRE_BUILDINGS = {
     "LT1": "E2",
     "LT2": "E2",
@@ -17,6 +18,7 @@ LECTURE_THEATRE_BUILDINGS = {
     "LT13": "AS2",
     "LT14": "AS6",
     "LT15": "AS6",
+    "LT16": "COM2",
     "LT17": "COM2",
     "LT18": "BIZ2",
     "LT19": "COM2",
@@ -30,6 +32,16 @@ LECTURE_THEATRE_BUILDINGS = {
     "LT32": "S1A",
     "LT33": "S17",
     "LT34": "S17",
+    "LT3": "CLB",
+    "LT4": "CLB",
+    "SR_LT19": "COM2",
+    "COM4SR31": "COM4",
+    "COM4SR32": "COM4",
+    "COM4SR33": "COM4",
+    "CQT/SR0514": "S15",
+    "MD11CRCAUD": "MD11",
+    "CFG_CARSPA": "YIH",
+    "LKY_TB10SR": "LKYSPP",
 }
 
 
