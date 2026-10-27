@@ -2,8 +2,6 @@
 
 ONLINE_PREFIXES = ("E-Learn", "E-Hybrid")
 
-# Lecture theatre and other unprefixed venue codes do not identify their buildings;
-# unmapped venues return None.
 LECTURE_THEATRE_BUILDINGS = {
     "LT1": "E2",
     "LT2": "E2",
