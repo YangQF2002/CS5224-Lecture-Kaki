@@ -13,7 +13,6 @@ from app.modules.timetable.api import (
 from app.modules.timetable.nusmods import (
     NusmodsUnavailable,
 )
-from app.modules.timetable.repository import TimetableRepository
 from app.modules.timetable.schemas import Timetable
 
 
