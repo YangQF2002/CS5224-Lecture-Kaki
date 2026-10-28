@@ -149,7 +149,7 @@ it('lists the week’s lectures grouped by day', async () => {
 
   expect(await screen.findByText('2 lectures in Week 11')).toBeTruthy()
   expect(
-    screen.getByRole('heading', { name: 'Tuesday 27 October' }),
+    screen.getByRole('heading', { name: /^Tuesday,? 27 October$/ }),
   ).toBeTruthy()
   expect(screen.getByText('COM1-0207')).toBeTruthy()
   expect(screen.getByText('LT27 · S16')).toBeTruthy()
