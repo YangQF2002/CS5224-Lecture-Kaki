@@ -7,6 +7,7 @@ from jobs.lecture_ingest.transform import (
     module_level,
     split_module_code,
 )
+from jobs.lecture_ingest.venues import building_for
 
 
 @pytest.fixture
@@ -118,6 +119,19 @@ def test_online_venue(sessions):
     assert online and all(s["venue"] == "E-Learn_C" for s in online)
     assert all(s["building"] is None for s in online)
     assert {s["building"] for s in nm if not s["online"]} == {"BIZ2"}
+
+
+@pytest.mark.parametrize(
+    ("venue", "building"),
+    [
+        ("LT16", "COM2"),
+        ("CQT/SR0514", "S15"),
+        ("UnknownVenue", None),
+        ("E-Learn_C", None),
+    ],
+)
+def test_building_for_venue(venue, building):
+    assert building_for(venue) == building
 
 
 def test_module_level():
