@@ -1,5 +1,6 @@
 import json
 from functools import lru_cache
+from http.client import HTTPException
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -16,22 +17,12 @@ class NusmodsUnavailable(Exception):
 class NusmodsModuleNotFound(Exception):
     """The requested module does not exist for the academic year."""
 
+
 class NusmodsClient:
-    @lru_cache(maxsize=512)
-    def fetch_module(
-        self,
-        academic_year: str,
-        module_code: str,
-    ) -> dict[str, Any]:
+    def fetch_module(self, academic_year: str, module_code: str) -> dict[str, Any]:
         encoded_code = quote(module_code, safe="")
-        url = (
-            f"{API_BASE_URL}/{academic_year}/modules/"
-            f"{encoded_code}.json"
-        )
-        request = Request(
-            url,
-            headers={"User-Agent": "LectureKaki/1.0"},
-        )
+        url = f"{API_BASE_URL}/{academic_year}/modules/{encoded_code}.json"
+        request = Request(url, headers={"User-Agent": "LectureKaki/1.0"})
 
         try:
             with urlopen(request, timeout=8) as response:
@@ -40,7 +31,7 @@ class NusmodsClient:
             if error.code == 404:
                 raise NusmodsModuleNotFound(module_code) from None
             raise NusmodsUnavailable("NUSMods request failed") from None
-        except (URLError, TimeoutError, OSError):
+        except HTTPException, URLError, TimeoutError, OSError:
             raise NusmodsUnavailable("NUSMods is unavailable") from None
 
         if len(body) > MAX_RESPONSE_BYTES:
@@ -48,17 +39,14 @@ class NusmodsClient:
 
         try:
             payload = json.loads(body)
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            raise NusmodsUnavailable(
-                "NUSMods returned an invalid response"
-            ) from None
+        except UnicodeDecodeError, json.JSONDecodeError:
+            raise NusmodsUnavailable("NUSMods returned an invalid response") from None
 
         if not isinstance(payload, dict):
-            raise NusmodsUnavailable(
-                "NUSMods returned an invalid module"
-            )
+            raise NusmodsUnavailable("NUSMods returned an invalid module")
 
         return payload
+
 
 @lru_cache
 def get_nusmods_client() -> NusmodsClient:

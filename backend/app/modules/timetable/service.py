@@ -3,49 +3,50 @@ from typing import Any
 from .nusmods import (
     NusmodsClient,
     NusmodsModuleNotFound,
+    NusmodsUnavailable,
 )
 from .schemas import Timetable, TimetableSelection
+
 
 class InvalidTimetableSelection(ValueError):
     """A selection does not exist in current NUSMods data."""
 
-def _semester_timetable(
-        module: dict[str, Any],
-        semester: int,
-) -> list[dict[str, Any]]:
+
+def _semester_timetable(module: dict[str, Any], semester: int) -> list[dict[str, Any]]:
     semester_data = module.get("semesterData")
 
     if not isinstance(semester_data, list):
-        raise InvalidTimetableSelection(
-            "module contains no semester information"
-        )
+        raise NusmodsUnavailable("module contains no semester information")
 
     for entry in semester_data:
         if (
-            isinstance(entry, dict)
-            and entry.get("semester") == semester
+            not isinstance(entry, dict)
+            or type(entry.get("semester")) is not int
+            or entry["semester"] not in (1, 2, 3, 4)
         ):
+            raise NusmodsUnavailable("module contains invalid semester information")
+        if entry.get("semester") == semester:
             lessons = entry.get("timetable")
 
             if not isinstance(lessons, list):
-                raise InvalidTimetableSelection(
-                    "module contains no timetable"
-                )
+                raise NusmodsUnavailable("module contains no timetable")
 
-            return [
-                lesson
+            if any(
+                not isinstance(lesson, dict)
+                or not isinstance(lesson.get("classNo"), str)
+                or not lesson["classNo"].strip()
+                or not isinstance(lesson.get("lessonType"), str)
+                or not lesson["lessonType"].strip()
                 for lesson in lessons
-                if isinstance(lesson, dict)
-            ]
+            ):
+                raise NusmodsUnavailable("module contains invalid lessons")
 
-    raise InvalidTimetableSelection(
-        f"module is not offered in semester {semester}"
-    )
+            return lessons
 
-def validate_timetable(
-        timetable: Timetable,
-        nusmods: NusmodsClient,
-) -> Timetable:
+    raise InvalidTimetableSelection(f"module is not offered in semester {semester}")
+
+
+def validate_timetable(timetable: Timetable, nusmods: NusmodsClient) -> Timetable:
     modules: dict[str, dict[str, Any]] = {}
     canonical_selections: list[TimetableSelection] = []
 
@@ -55,8 +56,7 @@ def validate_timetable(
         if module is None:
             try:
                 module = nusmods.fetch_module(
-                    timetable.academic_year,
-                    selection.module_code,
+                    timetable.academic_year, selection.module_code
                 )
             except NusmodsModuleNotFound:
                 raise InvalidTimetableSelection(
@@ -73,19 +73,17 @@ def validate_timetable(
             module_code != selection.module_code
             or not isinstance(module_title, str)
             or not module_title.strip()
+            or len(module_title.strip()) > 300
         ):
-            raise InvalidTimetableSelection(
+            raise NusmodsUnavailable(
                 f"invalid NUSMods data for {selection.module_code}"
             )
 
-        lessons = _semester_timetable(
-            module,
-            timetable.semester,
-        )
+        lessons = _semester_timetable(module, timetable.semester)
 
         selection_exists = any(
             lesson.get("lessonType") == selection.lesson_type
-            and str(lesson.get("classNo", "")) == selection.class_no
+            and lesson["classNo"] == selection.class_no
             for lesson in lessons
         )
 

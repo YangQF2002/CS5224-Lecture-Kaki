@@ -17,10 +17,7 @@ from .repository import (
 from .schemas import Timetable
 from .service import InvalidTimetableSelection, validate_timetable
 
-router = APIRouter(
-    prefix="/timetable",
-    tags=["Timetable"],
-)
+router = APIRouter(prefix="/timetable", tags=["Timetable"])
 
 
 def repository_dependency() -> TimetableRepository:
@@ -33,18 +30,9 @@ def repository_dependency() -> TimetableRepository:
         ) from None
 
 
-CurrentUserDependency = Annotated[
-    CurrentUser,
-    Depends(get_current_user),
-]
-RepositoryDependency = Annotated[
-    TimetableRepository,
-    Depends(repository_dependency),
-]
-NusmodsDependency = Annotated[
-    NusmodsClient,
-    Depends(get_nusmods_client),
-]
+CurrentUserDependency = Annotated[CurrentUser, Depends(get_current_user)]
+RepositoryDependency = Annotated[TimetableRepository, Depends(repository_dependency)]
+NusmodsDependency = Annotated[NusmodsClient, Depends(get_nusmods_client)]
 
 
 @router.get("", response_model=Timetable)
