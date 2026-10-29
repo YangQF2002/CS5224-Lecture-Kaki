@@ -7,10 +7,10 @@ import pytest
 from botocore.exceptions import ClientError
 from moto import mock_aws
 
-from handlers import ingest as ingest_handler
-from ingest.academic_calendar import week_label
-from ingest.publish import SuspiciousDataError, publish
-from ingest.transform import build_modules, build_sessions
+from jobs.lecture_ingest import handler as ingest_handler
+from jobs.lecture_ingest.academic_calendar import week_label
+from jobs.lecture_ingest.publish import SuspiciousDataError, publish
+from jobs.lecture_ingest.transform import build_modules, build_sessions
 
 BUCKET = "lecturekaki-test-web"
 NOW = datetime(2026, 10, 18, 19, 0, tzinfo=UTC)

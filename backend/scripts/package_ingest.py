@@ -41,11 +41,12 @@ def build_package(output: Path) -> Path:
             ],
             check=True,
         )
-        for folder in ("handlers", "ingest"):
-            for source in (BACKEND / folder).rglob("*.py"):
-                target = artifact / source.relative_to(BACKEND)
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source, target)
+        sources = [BACKEND / "jobs" / "__init__.py"]
+        sources.extend((BACKEND / "jobs" / "lecture_ingest").rglob("*.py"))
+        for source in sources:
+            target = artifact / source.relative_to(BACKEND)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
         archive = Path(shutil.make_archive(str(root / "ingest"), "zip", artifact))
         shutil.copyfile(archive, output)
     return output

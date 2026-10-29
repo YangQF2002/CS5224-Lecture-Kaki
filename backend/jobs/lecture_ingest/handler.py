@@ -7,10 +7,10 @@ from datetime import UTC, date, datetime, timedelta, timezone
 
 import boto3
 
-from ingest.academic_calendar import ingest_due, semester_for
-from ingest.nusmods import fetch_semester
-from ingest.publish import publish
-from ingest.transform import build_modules, build_sessions
+from .academic_calendar import ingest_due, semester_for
+from .nusmods import fetch_semester
+from .publish import publish
+from .transform import build_modules, build_sessions
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

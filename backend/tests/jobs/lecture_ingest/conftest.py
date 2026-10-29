@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from ingest.academic_calendar import SEMESTERS
+from jobs.lecture_ingest.academic_calendar import SEMESTERS
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

@@ -22,7 +22,7 @@ lectures/
 
 Each run uploads a complete snapshot before switching `current.json`. A failure before the switch leaves the previous snapshot active. Empty catalogues, missing required module metadata, empty session lists and session counts below half the previous run in the same semester are rejected.
 
-Snapshot files use `Cache-Control: public, max-age=86400, immutable`; `current.json` uses `no-cache`. Configure CloudFront to respect these headers, with a minimum TTL of zero for the pointer.
+Snapshot files use `Cache-Control: public, max-age=86400, immutable`; `current.json` uses `no-cache`. The hosting stack's CloudFront cache policy follows these headers with a minimum TTL of zero, so the pointer is always revalidated.
 
 ## Schemas
 
@@ -78,13 +78,13 @@ poetry run python scripts/ingest_local.py
 
 Output goes to `backend/out/ingest/lectures/`. Use `--date YYYY-MM-DD` to select a semester or `--out` for another subdirectory of `backend/out`. Existing files are preserved.
 
-To serve the output from the repository root:
+The Docker Compose frontend serves this output at <http://localhost:8080/lectures/>. For the Vite dev server, serve it from the repository root; Vite proxies `/lectures` to port 8001:
 
 ```sh
 python -m http.server 8001 --directory backend/out/ingest
 ```
 
-Use a Vite proxy for `/lectures` to `http://localhost:8001`; the static server does not provide CORS headers.
+To use deployed data instead, start Vite with `LECTURES_ORIGIN=https://<WebsiteURL>`.
 
 ## Deployment
 
@@ -94,18 +94,21 @@ Build the Lambda ZIP from `backend/`:
 poetry run python scripts/package_ingest.py
 ```
 
-This creates `build/ingest.zip` with the ingestion code and SDK dependencies constrained by `poetry.lock`. Rebuild after source or dependency changes.
+This creates `build/ingest.zip` with `jobs/__init__.py`, the `jobs/lecture_ingest/` package and SDK dependencies constrained by `poetry.lock`. Other jobs and the API are excluded. The Lambda entry point is `jobs.lecture_ingest.handler.handler`. Rebuild after source or dependency changes.
 
-From the repository root, use the shared development profile and a private artifact bucket to prepare a change set:
+The lecture files are written to the website bucket owned by the hosting stack ([`infra/hosting.yaml`](../infra/hosting.yaml)), which exports its name and ARN. Deploy hosting before ingestion with the same `Env`. The bucket is retained when the hosting stack is deleted, and the ingestion stack cannot be deployed without its exports.
+
+From the repository root, use the shared development profile and a private artifact bucket to prepare change sets:
 
 ```powershell
 $awsProfile = 'cs5224-dev'
 $artifactBucket = '<private-artifact-bucket>'
-aws cloudformation package --template-file infra/template.yaml --s3-bucket $artifactBucket --s3-prefix lecture-kaki/ingest --output-template-file build/ingest.packaged.yaml --region ap-southeast-1 --profile $awsProfile
-aws cloudformation deploy --template-file build/ingest.packaged.yaml --stack-name lecturekaki-dev --parameter-overrides Env=dev --capabilities CAPABILITY_IAM --no-execute-changeset --region ap-southeast-1 --profile $awsProfile
+aws cloudformation deploy --template-file infra/hosting.yaml --stack-name lecture-kaki-hosting-dev --parameter-overrides Env=dev --no-execute-changeset --region ap-southeast-1 --profile $awsProfile
+aws cloudformation package --template-file infra/ingest.yaml --s3-bucket $artifactBucket --s3-prefix lecture-kaki/ingest --output-template-file build/ingest.packaged.yaml --region ap-southeast-1 --profile $awsProfile
+aws cloudformation deploy --template-file build/ingest.packaged.yaml --stack-name lecture-kaki-ingest-dev --parameter-overrides Env=dev --capabilities CAPABILITY_IAM --no-execute-changeset --region ap-southeast-1 --profile $awsProfile
 ```
 
-Review and execute the change set, then read `WebBucketName` and `IngestFunctionName` from the stack outputs. This stack is separate from authentication. Connect its private bucket to CloudFront when deploying the website.
+Review and execute the hosting change set before creating the ingestion change set. Read `WebBucketName` from the hosting stack outputs and `IngestFunctionName` from the ingestion stack outputs. Both stacks are separate from authentication. For a personal account, see [personal AWS setup](aws-dev-setup.md).
 
 ## Scheduling and recovery
 
@@ -121,12 +124,12 @@ Check the response for `FunctionError` and confirm the published `path` matches 
 
 - Retain previous snapshots for rollback; remove unused snapshots and incomplete uploads after clients no longer need them.
 - To roll back, repoint `current.json` to a complete retained snapshot, with its academic year, semester and generation time. Preserve the `no-cache` header.
-- Update semester and holiday entries in `academic_calendar.py` before each new academic year.
+- Update semester and holiday entries in `backend/jobs/lecture_ingest/academic_calendar.py` before each new academic year.
 
 ## Testing and format changes
 
-Run `poetry run python -m pytest tests/ingest` from `backend/`. Tests use local fixtures and in-memory S3 without contacting AWS or NUSMods. Fixture samples use AY2026/27 Semester 1 data with descriptions shortened to 120 characters.
+Run `poetry run python -m pytest tests/jobs/lecture_ingest` from `backend/`. Tests use local fixtures and in-memory S3 without contacting AWS or NUSMods. Fixture samples use AY2026/27 Semester 1 data with descriptions shortened to 120 characters.
 
 Before deployment, inspect the ZIP and verify the packaged handler imports. After deployment, check a manual invocation, the schedule timezone and any failure-alert subscription.
 
-Session/module fields are defined in `ingest/transform.py`; file layout is defined in `ingest/publish.py`. Coordinate breaking format changes with consumers and update this guide in the same PR.
+Session/module fields are defined in `backend/jobs/lecture_ingest/transform.py`; file layout is defined in `backend/jobs/lecture_ingest/publish.py`. Coordinate breaking format changes with consumers and update this guide in the same PR.

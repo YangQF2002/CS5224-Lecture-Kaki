@@ -51,7 +51,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/cfn-lint"
           "$RUNNER_TEMP/cfn-lint/bin/python" -m pip install cfn-lint==1.57.2
           # Local Lambda paths are resolved during packaging.
-          "$RUNNER_TEMP/cfn-lint/bin/cfn-lint" --template infra/auth.yaml infra/template.yaml --regions ap-southeast-1 --ignore-checks W3002
+          "$RUNNER_TEMP/cfn-lint/bin/cfn-lint" --template infra/auth.yaml infra/hosting.yaml infra/ingest.yaml --regions ap-southeast-1 --ignore-checks W3002
       - name: Validate Compose configuration
         run: docker compose config --quiet
       - name: Build runtime images

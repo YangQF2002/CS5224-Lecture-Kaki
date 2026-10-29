@@ -53,11 +53,19 @@ def test_package_excludes_local_files_and_pins_dependencies(tmp_path, monkeypatc
         encoding="utf-8",
     )
     (backend / ".env.local").write_text("SYNTHETIC_TEST_TOKEN", encoding="utf-8")
-    for folder in ("handlers", "ingest"):
+    for folder in ("jobs", "jobs/lecture_ingest", "jobs/unrelated"):
         directory = backend / folder
         directory.mkdir()
         (directory / "__init__.py").write_text("", encoding="utf-8")
         (directory / ".env.local").write_text("SYNTHETIC_TEST_TOKEN", encoding="utf-8")
+    (backend / "jobs" / "lecture_ingest" / "handler.py").write_text(
+        "from .transform import transform\n\ndef handler(event, context):\n"
+        "    return transform(event)\n",
+        encoding="utf-8",
+    )
+    (backend / "jobs" / "lecture_ingest" / "transform.py").write_text(
+        "def transform(event):\n    return event\n", encoding="utf-8"
+    )
     (backend / "tests").mkdir()
     (backend / "tests" / "test_example.py").touch()
     monkeypatch.setattr(package_ingest, "BACKEND", backend)
@@ -75,4 +83,25 @@ def test_package_excludes_local_files_and_pins_dependencies(tmp_path, monkeypatc
 
     with zipfile.ZipFile(output) as archive:
         files = {name for name in archive.namelist() if not name.endswith("/")}
-        assert files == {"handlers/__init__.py", "ingest/__init__.py", "boto3.py"}
+        assert files == {
+            "jobs/__init__.py",
+            "jobs/lecture_ingest/__init__.py",
+            "jobs/lecture_ingest/handler.py",
+            "jobs/lecture_ingest/transform.py",
+            "boto3.py",
+        }
+
+    # Import only from the ZIP, without the repository on Python's import path.
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-I",
+            "-c",
+            (
+                "import sys; sys.path.insert(0, sys.argv[1]); "
+                "from jobs.lecture_ingest.handler import handler; "
+                "assert handler({'packaged': True}, None) == {'packaged': True}"
+            ),
+            str(output),
+        ]
+    )

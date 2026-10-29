@@ -23,6 +23,9 @@ services:
       target: runtime
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-8080}:8080"
+    volumes:
+      # Output of backend/scripts/ingest_local.py; empty until it has run.
+      - ./backend/out/ingest/lectures:/usr/share/nginx/html/lectures:ro
     read_only: true
     tmpfs:
       - /tmp

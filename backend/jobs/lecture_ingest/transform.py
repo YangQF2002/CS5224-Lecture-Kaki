@@ -4,9 +4,9 @@ import re
 from collections import defaultdict
 from datetime import date
 
-from ingest.academic_calendar import EARLY_CLOSURES, Semester, class_dates
-from ingest.lesson_types import LESSON_TYPE_CODES
-from ingest.venues import building_for, is_online
+from .academic_calendar import EARLY_CLOSURES, Semester, class_dates
+from .lesson_types import LESSON_TYPE_CODES
+from .venues import building_for, is_online
 
 EXCLUDED_FACULTIES = frozenset({"NUS-ISS"})
 

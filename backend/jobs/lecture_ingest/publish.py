@@ -6,9 +6,9 @@ from uuid import uuid4
 
 from botocore.exceptions import ClientError
 
-from ingest.academic_calendar import Semester, week_label
-from ingest.lesson_types import LESSON_TYPE_CODES
-from ingest.transform import group_by_date
+from .academic_calendar import Semester, week_label
+from .lesson_types import LESSON_TYPE_CODES
+from .transform import group_by_date
 
 ROOT = "lectures"
 CACHE_CONTROL = "public, max-age=86400, immutable"

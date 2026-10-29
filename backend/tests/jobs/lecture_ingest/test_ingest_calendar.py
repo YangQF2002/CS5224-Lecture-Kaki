@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from ingest.academic_calendar import (
+from jobs.lecture_ingest.academic_calendar import (
     SEMESTERS,
     class_dates,
     ingest_due,
