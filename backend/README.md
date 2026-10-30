@@ -36,6 +36,12 @@ Deploy authentication once to a shared development AWS account in `ap-southeast-
 
 See [authentication](../docs/authentication.md) for the flow, integration details, deployment commands, and opt-in Cognito tests.
 
+## Forum
+
+The shared API serves authenticated Forum history, posting, owner-only deletion
+and native WebSocket updates. See [Forum setup](../docs/forum.md) for the table,
+frontend login, local run commands and single-worker deployment limit.
+
 ## Lecture data ingestion
 
 Generate lecture data locally with `poetry run python scripts/ingest_local.py`. This reads public NUSMods data and uses in-memory S3; it does not access AWS.

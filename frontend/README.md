@@ -38,3 +38,17 @@ To import a timetable, paste a NUSMods student timetable share link. The link su
 Selections are saved in this browser when local storage is available. Changing year or semester clears the current selections. Possible timetable conflicts are highlighted.
 
 Module search and timetable loading require access to the public NUSMods API.
+
+## Forum
+
+Open `/forum`, find a lecture by module, week or venue, and join its discussion.
+The picker and shared links require the same lecture JSON as Discover. Forum
+restores the last Forum screen, including picker filters or the selected room,
+and keeps drafts in that tab. Use **Choose another lecture** to switch rooms and
+**Copy discussion link** to invite classmates.
+
+Forum includes Cognito sign-in, token refresh, history and live WebSocket updates.
+Returning users reconnect through Cognito automatically while its browser session
+is valid; tokens remain per-tab. Configure the public values in
+[`.env.example`](.env.example) and register `/auth/callback` and `/forum` in
+Cognito. See [Forum setup and testing](../docs/forum.md).
