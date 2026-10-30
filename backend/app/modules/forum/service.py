@@ -32,7 +32,7 @@ def make_message(room_id: str, content: str, author_id: str) -> dict:
         "content": content,
         "posted_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "expires_at": expires.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "ttl": int(expires.timestamp()) + 3600,  # 1-hour buffer for DynamoDB TTL lag
+        "ttl": int(expires.timestamp()),
     }
 
 
@@ -64,9 +64,15 @@ def decode_cursor(cursor: str, room_id: str) -> dict:
     """
     try:
         payload = json.loads(base64.urlsafe_b64decode(cursor.encode()))
-        pk: str = payload["pk"]
-        sk: str = payload["sk"]
-        embedded_room: str = payload["room_id"]
+        pk = payload["pk"]
+        sk = payload["sk"]
+        embedded_room = payload["room_id"]
+        if (
+            not isinstance(pk, str)
+            or not isinstance(sk, str)
+            or not isinstance(embedded_room, str)
+        ):
+            raise TypeError("cursor fields must be strings")
     except Exception as exc:
         raise ValueError("malformed cursor") from exc
 

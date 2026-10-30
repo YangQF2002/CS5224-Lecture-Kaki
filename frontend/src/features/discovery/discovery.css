@@ -250,3 +250,8 @@ label.checkbox {
     gap: 0.25rem;
   }
 }
+
+.session-forum-link {
+  display: inline-flex;
+  margin-top: 0.75rem;
+}

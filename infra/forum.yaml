@@ -1,0 +1,44 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: LectureKaki Forum storage. HTTP and native WebSockets run in the shared FastAPI container.
+
+Parameters:
+  Env:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, prod]
+  ExistingTableName:
+    Type: String
+    Default: ''
+    Description: Reuse an existing String PK/SK table with TTL enabled on ttl. Empty creates a retained Forum table.
+
+Conditions:
+  CreateTable: !Equals [!Ref ExistingTableName, '']
+
+Resources:
+  DataTable:
+    Type: AWS::DynamoDB::Table
+    Condition: CreateTable
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub lecturekaki-${Env}-forum
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+Outputs:
+  TableName:
+    Value: !If [CreateTable, !Ref DataTable, !Ref ExistingTableName]
+  TableArn:
+    Value: !If [CreateTable, !GetAtt DataTable.Arn, !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ExistingTableName}']

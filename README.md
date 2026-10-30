@@ -4,6 +4,8 @@ A CS5224 Cloud Computing project to help NUS students discover lectures beyond
 their enrolled modules and find companions to attend with, using
 [NUSMods](https://api.nusmods.com/v2/) module and timetable data.
 
+Forum setup, live updates, and development deployment: [Forum guide](docs/forum.md).
+
 ## Run with Docker
 
 Install Docker with Compose v2.24 or newer. From the repository root:
@@ -35,15 +37,15 @@ The smoke test requires the runtime containers to be running. See
 
 - **Frontend:** React, TypeScript, Vite, React Router, CSS.
 - **Backend:** Python, FastAPI.
-- **AWS:** S3, CloudFront, API Gateway, Lambda, Cognito, DynamoDB.
+- **AWS:** S3, CloudFront, EC2, Lambda, Cognito, DynamoDB.
 
 ## Current features
 
 - Lecture discovery by week, day, time, building, subject code, faculty, level, class size, and keywords, with shareable filter links.
 - Personal timetable with module and lesson-group selection, NUSMods import, browser-local saving, and clash highlighting.
+- Lecture discussions with Cognito login, live messages, owner-only deletion and 24-hour expiry.
 
 ## Planned features
 
 - Interest topics for lecture discovery.
 - Lecture recommendations that fit interests and free time.
-- Session discussions to connect with other students and find companions.

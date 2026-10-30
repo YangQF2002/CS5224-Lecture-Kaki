@@ -13,7 +13,7 @@ _ROOM_ID_RE = re.compile(
 
 
 def _validate_room_id(value: str) -> str:
-    if not _ROOM_ID_RE.match(value):
+    if not _ROOM_ID_RE.fullmatch(value):
         raise ValueError(
             "room_id must be <moduleCode>-LEC-<classNo>@<YYYY-MM-DD>-<HHMM>-<venue>"
             "@<acadYear>@<semester>"
@@ -46,3 +46,8 @@ class MessageOut(BaseModel):
 class MessagePage(BaseModel):
     items: list[MessageOut]
     next_cursor: str | None
+
+
+class ConnectionTicket(BaseModel):
+    path: str
+    session_expires_at: int

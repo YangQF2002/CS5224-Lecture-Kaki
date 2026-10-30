@@ -16,6 +16,11 @@ FROM source AS test
 CMD ["sh", "-c", "npm run lint && npm run format:check && npm test && npm run build"]
 
 FROM source AS build
+ARG VITE_API_URL=http://localhost:8000
+ARG VITE_COGNITO_DOMAIN
+ARG VITE_COGNITO_CLIENT_ID
+ARG VITE_COGNITO_REDIRECT_URI
+ARG VITE_COGNITO_LOGOUT_URI
 RUN npm run build
 
 FROM nginx:1.30.6-alpine@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951 AS runtime

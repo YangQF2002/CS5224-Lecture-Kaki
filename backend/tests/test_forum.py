@@ -318,29 +318,39 @@ def test_delete_nonexistent_message_returns_404(
 
 
 # ---------------------------------------------------------------------------
-# 7. Expiry filtering
+# 7. Expiry filtering — real is_expired check on a seeded expired record
 # ---------------------------------------------------------------------------
 
 
 def test_expired_message_not_returned(
-    client: TestClient, signing_key, monkeypatch
+    client: TestClient, signing_key, ddb_table
 ) -> None:
-    import app.modules.forum.service as svc
+    from datetime import UTC, datetime, timedelta
 
-    # Post a message, then make is_expired always return True for it
-    msg = post_msg(client, VALID_ROOM, "will expire", signing_key, USER_A)
+    # Seed a message whose expires_at is already in the past.
+    now = datetime.now(UTC)
+    past = now - timedelta(hours=25)
+    expired_item = {
+        "PK": f"ROOM#{VALID_ROOM}",
+        "SK": f"MSG#{int(past.timestamp() * 1000):020d}-expired",
+        "message_id": f"{int(past.timestamp() * 1000):020d}-expired",
+        "room_id": VALID_ROOM,
+        "author_id": USER_A,
+        "content": "this is expired",
+        "posted_at": past.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "expires_at": (past + timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "ttl": int((past + timedelta(hours=25)).timestamp()),
+    }
+    ddb_table.put_item(Item=expired_item)
 
-    original_is_expired = svc.is_expired
-
-    def always_expired(item):
-        if item.get("message_id") == msg["message_id"]:
-            return True
-        return original_is_expired(item)
-
-    monkeypatch.setattr(svc, "is_expired", always_expired)
+    # Also post a live message so the room is non-empty.
+    post_msg(client, VALID_ROOM, "still visible", signing_key, USER_A)
 
     r = client.get(f"/rooms/{VALID_ROOM}/messages", headers=auth(signing_key, USER_A))
-    assert all(m["message_id"] != msg["message_id"] for m in r.json()["items"])
+    assert r.status_code == 200
+    contents = [m["content"] for m in r.json()["items"]]
+    assert "this is expired" not in contents
+    assert "still visible" in contents
 
 
 # ---------------------------------------------------------------------------
@@ -395,6 +405,25 @@ def test_malformed_cursor_returns_422(client: TestClient, signing_key) -> None:
     assert r.status_code == 422
 
 
+def test_cursor_with_non_string_fields_returns_422(
+    client: TestClient, signing_key
+) -> None:
+    import base64
+    import json
+
+    # Craft a cursor where sk is a number, not a string.
+    bad = base64.urlsafe_b64encode(
+        json.dumps(
+            {"pk": f"ROOM#{VALID_ROOM}", "sk": 12345, "room_id": VALID_ROOM}
+        ).encode()
+    ).decode()
+    r = client.get(
+        f"/rooms/{VALID_ROOM}/messages?cursor={bad}",
+        headers=auth(signing_key, USER_A),
+    )
+    assert r.status_code == 422
+
+
 # ---------------------------------------------------------------------------
 # 9. Page ordering (oldest first within a page)
 # ---------------------------------------------------------------------------
@@ -408,3 +437,251 @@ def test_page_is_oldest_first(client: TestClient, signing_key) -> None:
     items = r.json()["items"]
     posted_ats = [m["posted_at"] for m in items]
     assert posted_ats == sorted(posted_ats)
+
+
+# Native live delivery shares the existing FastAPI server and authenticated rooms.
+
+
+def ticket_path(client, signing_key, room=VALID_ROOM, user=USER_A):
+    response = client.post(
+        f"/rooms/{room}/connection-ticket", headers=auth(signing_key, user)
+    )
+    assert response.status_code == 201
+    return response.json()["path"]
+
+
+def test_ticket_requires_authentication(client):
+    assert client.post(f"/rooms/{VALID_ROOM}/connection-ticket").status_code == 401
+
+
+def test_live_post_and_delete_reach_two_signed_in_users(client, signing_key):
+    a = ticket_path(client, signing_key, user=USER_A)
+    b = ticket_path(client, signing_key, user=USER_B)
+    with client.websocket_connect(a) as first, client.websocket_connect(b) as second:
+        message = post_msg(client, VALID_ROOM, "live reply", signing_key, USER_A)
+        for socket in (first, second):
+            event = socket.receive_json()
+            assert event["type"] == "message.created"
+            assert event["room_id"] == VALID_ROOM
+            assert event["message"]["message_id"] == message["message_id"]
+            assert event["message"]["author_id"] == USER_A
+        assert (
+            client.delete(
+                f"/rooms/{VALID_ROOM}/messages/{message['message_id']}",
+                headers=auth(signing_key, USER_B),
+            ).status_code
+            == 403
+        )
+        assert (
+            client.delete(
+                f"/rooms/{VALID_ROOM}/messages/{message['message_id']}",
+                headers=auth(signing_key, USER_A),
+            ).status_code
+            == 204
+        )
+        for socket in (first, second):
+            assert socket.receive_json() == {
+                "type": "message.deleted",
+                "room_id": VALID_ROOM,
+                "message_id": message["message_id"],
+            }
+
+
+def test_ticket_is_single_use(client, signing_key):
+    from starlette.websockets import WebSocketDisconnect
+
+    path = ticket_path(client, signing_key)
+    with (
+        client.websocket_connect(path),
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect(path),
+    ):
+        pass
+
+
+def test_ticket_cannot_join_another_room(client, signing_key):
+    from starlette.websockets import WebSocketDisconnect
+
+    path = ticket_path(client, signing_key)
+    from urllib.parse import quote
+
+    wrong = path.replace(quote(VALID_ROOM, safe=""), quote(OTHER_ROOM, safe=""))
+    with pytest.raises(WebSocketDisconnect), client.websocket_connect(wrong):
+        pass
+    # A failed room switch must not consume the valid ticket.
+    with client.websocket_connect(path):
+        pass
+
+
+def test_expired_ticket_rejected_without_waiting_for_ttl(
+    client, signing_key, ddb_table
+):
+    from urllib.parse import parse_qs, urlparse
+
+    from starlette.websockets import WebSocketDisconnect
+
+    from app.modules.forum import realtime
+
+    path = ticket_path(client, signing_key)
+    ticket = parse_qs(urlparse(path).query)["ticket"][0]
+    ddb_table.update_item(
+        Key=realtime._ticket_key(ticket),
+        UpdateExpression="SET #ttl = :past",
+        ExpressionAttributeNames={"#ttl": "ttl"},
+        ExpressionAttributeValues={":past": int(time()) - 1},
+    )
+    with pytest.raises(WebSocketDisconnect), client.websocket_connect(path):
+        pass
+
+
+def test_socket_requires_ticket(client):
+    from starlette.websockets import WebSocketDisconnect
+
+    with (
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect(f"/rooms/{VALID_ROOM}/live"),
+    ):
+        pass
+
+
+def test_socket_origin_and_receive_only_contract(client, signing_key):
+    from starlette.websockets import WebSocketDisconnect
+
+    path = ticket_path(client, signing_key)
+    with (
+        pytest.raises(WebSocketDisconnect),
+        client.websocket_connect(path, headers={"Origin": "https://unrelated.example"}),
+    ):
+        pass
+    with client.websocket_connect(
+        path, headers={"Origin": "http://localhost:5173"}
+    ) as socket:
+        socket.send_json({"action": "ping"})
+        socket.send_json({"action": "post", "content": "spoofed"})
+        with pytest.raises(WebSocketDisconnect):
+            socket.receive_json()
+    assert (
+        client.get(
+            f"/rooms/{VALID_ROOM}/messages", headers=auth(signing_key, USER_A)
+        ).json()["items"]
+        == []
+    )
+
+
+def test_hub_room_isolation_expiry_and_transport_failures():
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from app.modules.forum.realtime import RoomHub
+
+    async def scenario():
+        hub = RoomHub()
+        a, b, expired, failed = [AsyncMock() for _ in range(4)]
+        await hub.join(VALID_ROOM, a, int(time()) + 100)
+        await hub.join(OTHER_ROOM, b, int(time()) + 100)
+        await hub.join(VALID_ROOM, expired, int(time()) - 1)
+        await hub.join(VALID_ROOM, failed, int(time()) + 100)
+        failed.send_json.side_effect = RuntimeError("closed")
+        await hub.publish(VALID_ROOM, {"type": "message.deleted", "message_id": "id"})
+        a.send_json.assert_awaited_once()
+        b.send_json.assert_not_awaited()
+        expired.send_json.assert_not_awaited()
+        expired.close.assert_awaited_once_with(code=1008, reason="Sign-in expired")
+        assert set(hub.rooms[VALID_ROOM]) == {a}
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "path,method",
+    [
+        (f"/rooms/{VALID_ROOM}/messages", "get"),
+        (f"/rooms/{VALID_ROOM}/connection-ticket", "post"),
+    ],
+)
+def test_storage_failure_returns_503(client, signing_key, monkeypatch, path, method):
+    from botocore.exceptions import NoCredentialsError
+
+    def unavailable(table=None):
+        raise NoCredentialsError()
+
+    monkeypatch.setattr(repository, "get_table", unavailable)
+    response = getattr(client, method)(path, headers=auth(signing_key, USER_A))
+    assert response.status_code == 503
+
+
+def test_missing_config_fails_before_sdk_access(monkeypatch):
+    from unittest.mock import Mock
+
+    monkeypatch.delenv("DYNAMODB_TABLE", raising=False)
+    session = Mock(side_effect=AssertionError("SDK must not be accessed"))
+    monkeypatch.setattr(repository.boto3.session, "Session", session)
+    with pytest.raises(repository.ForumStorageUnavailable):
+        repository.get_table()
+    session.assert_not_called()
+
+
+def test_cors_allows_post_and_future_timetable_put(client):
+    for method in ("POST", "PUT"):
+        response = client.options(
+            f"/rooms/{VALID_ROOM}/messages",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": method,
+                "Access-Control-Request-Headers": "authorization,content-type",
+            },
+        )
+        assert response.status_code == 200
+
+
+def test_frontend_origins_prefers_shared_setting(monkeypatch):
+    from app.config import frontend_origins
+
+    monkeypatch.setenv(
+        "FRONTEND_ORIGINS", " https://site.example/ , http://localhost:5173 "
+    )
+    monkeypatch.setenv("CORS_ORIGINS", "https://old.example")
+    assert frontend_origins() == ["https://site.example", "http://localhost:5173"]
+
+
+def test_configured_region_is_available_to_region_aware_credentials(monkeypatch):
+    from botocore.credentials import Credentials
+    from botocore.exceptions import NoRegionError
+    from botocore.session import Session
+
+    monkeypatch.delenv("AWS_DEFAULT_REGION", raising=False)
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    monkeypatch.delenv("AWS_DEFAULT_PROFILE", raising=False)
+    monkeypatch.setenv("AWS_CONFIG_FILE", os.devnull)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", os.devnull)
+
+    def region_aware_credentials(session):
+        if not session.get_config_variable("region"):
+            raise NoRegionError()
+        return Credentials("testing", "testing")
+
+    monkeypatch.setattr(Session, "get_credentials", region_aware_credentials)
+    assert repository.get_table().meta.client.meta.region_name == REGION
+
+
+def test_idle_socket_closes_when_authenticated_session_expires(
+    client, signing_key, ddb_table
+):
+    from urllib.parse import parse_qs, urlparse
+
+    from starlette.websockets import WebSocketDisconnect
+
+    from app.modules.forum import realtime
+
+    path = ticket_path(client, signing_key)
+    ticket = parse_qs(urlparse(path).query)["ticket"][0]
+    ddb_table.update_item(
+        Key=realtime._ticket_key(ticket),
+        UpdateExpression="SET session_expires_at = :soon",
+        ExpressionAttributeValues={":soon": int(time()) + 2},
+    )
+    with client.websocket_connect(path) as socket:
+        with pytest.raises(WebSocketDisconnect) as closed:
+            socket.receive_json()
+        assert closed.value.code == 1008
+    assert VALID_ROOM not in realtime.hub.rooms

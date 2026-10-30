@@ -1,4 +1,18 @@
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+const API_BASE = (
+  import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+).replace(/\/$/, '')
+
+export class ForumApiError extends Error {
+  status: number
+  constructor(status: number) {
+    super(
+      status === 401
+        ? 'Sign in to continue.'
+        : `Forum request failed (${status}).`,
+    )
+    this.status = status
+  }
+}
 
 export interface MessageOut {
   message_id: string
@@ -28,6 +42,7 @@ async function apiFetch(
       ...(init.headers ?? {}),
     },
   })
+  if (!res.ok) throw new ForumApiError(res.status)
   return res
 }
 
@@ -43,7 +58,6 @@ export async function getMessages(
     `/rooms/${encodeURIComponent(roomId)}/messages?${params}`,
     getToken,
   )
-  if (!res.ok) throw new Error(`GET messages failed: ${res.status}`)
   return res.json() as Promise<MessagePage>
 }
 
@@ -57,7 +71,6 @@ export async function postMessage(
     getToken,
     { method: 'POST', body: JSON.stringify({ content }) },
   )
-  if (!res.ok) throw new Error(`POST message failed: ${res.status}`)
   return res.json() as Promise<MessageOut>
 }
 
@@ -66,10 +79,34 @@ export async function deleteMessage(
   messageId: string,
   getToken: () => Promise<string>,
 ): Promise<void> {
-  const res = await apiFetch(
+  await apiFetch(
     `/rooms/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(messageId)}`,
     getToken,
     { method: 'DELETE' },
   )
-  if (!res.ok) throw new Error(`DELETE message failed: ${res.status}`)
+}
+
+export async function getCurrentUser(
+  getToken: () => Promise<string>,
+): Promise<{ user_id: string }> {
+  const res = await apiFetch('/auth/me', getToken)
+  return res.json() as Promise<{ user_id: string }>
+}
+
+export async function getConnectionTicket(
+  roomId: string,
+  getToken: () => Promise<string>,
+): Promise<{ path: string; session_expires_at: number }> {
+  const res = await apiFetch(
+    `/rooms/${encodeURIComponent(roomId)}/connection-ticket`,
+    getToken,
+    { method: 'POST' },
+  )
+  return res.json() as Promise<{ path: string; session_expires_at: number }>
+}
+
+export function forumSocketUrl(path: string): string {
+  const url = new URL(`${API_BASE}${path}`, window.location.origin)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  return url.toString()
 }

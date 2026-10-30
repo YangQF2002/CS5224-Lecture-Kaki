@@ -38,3 +38,12 @@ To import a timetable, paste a NUSMods student timetable share link. The link su
 Selections are saved in this browser when local storage is available. Changing year or semester clears the current selections. Possible timetable conflicts are highlighted.
 
 Module search and timetable loading require access to the public NUSMods API.
+
+## Forum
+
+Open `/forum` with a shared room ID, or select **Join discussion** on a Discover
+lecture card. Cognito login uses `/auth/callback`; signed-in users can post,
+receive live updates and delete their own messages.
+
+Configure the public API and Cognito values in `frontend/.env.local`; see
+[Forum setup](../docs/forum.md) for local configuration, Docker login and testing.

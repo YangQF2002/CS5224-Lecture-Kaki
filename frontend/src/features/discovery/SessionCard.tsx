@@ -1,11 +1,20 @@
+import { Link } from 'react-router'
+import { forumPath } from '../forum/room.ts'
 import type { LectureModule, LectureSession } from './types.ts'
 
 type SessionCardProps = {
   session: LectureSession
   module: LectureModule | undefined
+  acadYear: string
+  semester: number
 }
 
-function SessionCard({ session, module }: SessionCardProps) {
+function SessionCard({
+  session,
+  module,
+  acadYear,
+  semester,
+}: SessionCardProps) {
   const venue = session.online
     ? 'Online'
     : // Venues such as LT11 do not name their building; COM1-0207 does.
@@ -48,6 +57,12 @@ function SessionCard({ session, module }: SessionCardProps) {
             View on NUSMods
           </a>
         </details>
+        <Link
+          className="session-forum-link"
+          to={forumPath(session.id, acadYear, semester)}
+        >
+          Join discussion
+        </Link>
       </div>
     </article>
   )

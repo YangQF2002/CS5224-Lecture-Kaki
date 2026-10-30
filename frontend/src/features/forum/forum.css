@@ -4,13 +4,34 @@
   padding: 0 1.5rem 4rem;
 }
 
+.forum-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0 0 1rem;
+}
+
+.forum-page a {
+  color: #1d4ed8;
+}
+.room-id {
+  overflow-wrap: anywhere;
+}
+.forum-page input {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem;
+}
+
 .forum-page header {
   margin-bottom: 1.25rem;
 }
 
-.forum-page header h1 {
+.forum-page h1 {
   margin: 0 0 0.25rem;
-  font-size: 1.25rem;
+  font-size: 2rem;
 }
 
 .forum-page header p {

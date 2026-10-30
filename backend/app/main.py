@@ -1,10 +1,14 @@
 import os
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from app.config import frontend_origins
 from app.health import router as health_router
 from app.modules.auth import router as auth_router
 from app.modules.forum import router as forum_router
+from app.modules.forum.repository import ForumStorageUnavailable
 
 app = FastAPI(
     title="LectureKaki API",
@@ -19,6 +23,21 @@ app = FastAPI(
         else None
     ),
 )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=frontend_origins(),
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+
+@app.exception_handler(ForumStorageUnavailable)
+async def forum_storage_unavailable(_request, _error):
+    return JSONResponse(
+        status_code=503, content={"detail": "Forum storage is unavailable"}
+    )
+
+
 app.include_router(auth_router)
 app.include_router(health_router)
 app.include_router(forum_router)

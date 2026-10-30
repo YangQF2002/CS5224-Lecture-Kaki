@@ -35,7 +35,7 @@ A first visit transfers about 360 KB of data; each further week adds one week fi
 
 | Phase | Scope                                                                       | Depends on                            | Status   |
 | ----- | --------------------------------------------------------------------------- | ------------------------------------- | -------- |
-| P1    | Discover page with time, building, subject, level, size and keyword filters | Static lecture data                   | Deployed |
+| P1    | Discover page with time, building, subject, level, size and keyword filters | Static lecture data                   | Implemented |
 | P2    | Topic tags added to `modules.json` by ingestion; interest picker            | Bedrock access, or keyword rules      | Planned  |
 | P3    | Suggestions that fit free slots in the saved timetable                      | Building coordinates for walking time | Planned  |
 | P4    | Login features: synced preferences, saved lectures, companions              | EC2 API, DynamoDB, frontend login     | Planned  |

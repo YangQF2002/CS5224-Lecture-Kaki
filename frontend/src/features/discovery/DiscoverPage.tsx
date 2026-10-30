@@ -507,6 +507,8 @@ function DiscoverPage() {
                       <SessionCard
                         key={session.id}
                         session={session}
+                        acadYear={snapshot.pointer.acadYear}
+                        semester={snapshot.pointer.semester}
                         module={modulesByCode.get(session.moduleCode)}
                       />
                     ))}
