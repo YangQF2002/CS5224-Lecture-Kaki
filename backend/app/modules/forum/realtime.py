@@ -94,13 +94,13 @@ class RoomHub:
                         self.leave(room_id, socket)
                     else:
                         await socket.send_json({**event, "room_id": room_id})
-            except (RuntimeError, WebSocketDisconnect, TimeoutError, OSError):
+            except RuntimeError, WebSocketDisconnect, TimeoutError, OSError:
                 # A disconnected/slow recipient must not fail a saved message.
                 self.leave(room_id, socket)
                 try:
                     async with asyncio.timeout(1):
                         await socket.close(code=1011)
-                except (RuntimeError, WebSocketDisconnect, TimeoutError, OSError):
+                except RuntimeError, WebSocketDisconnect, TimeoutError, OSError:
                     logger.debug("Forum connection already closed")
                 logger.info("Removed unavailable Forum connection")
 

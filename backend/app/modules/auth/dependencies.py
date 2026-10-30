@@ -105,7 +105,7 @@ def get_current_user(
         raise HTTPException(
             status_code=503, detail="Authentication is unavailable"
         ) from None
-    except (InvalidTokenError, PyJWKClientError):
+    except InvalidTokenError, PyJWKClientError:
         raise _unauthorised() from None
 
     return CurrentUser(user_id=claims["sub"])

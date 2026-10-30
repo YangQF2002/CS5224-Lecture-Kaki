@@ -12,14 +12,20 @@ vi.mock('../../../src/features/forum/forumApi.ts', async (original) => ({
   getConnectionTicket: vi.fn(),
 }))
 
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
+  vi.useRealTimers()
+})
+
 describe('sign-in', () => {
   const sessionKey = 'lecturekaki:auth:v1'
   const loginKey = 'lecturekaki:login:v1'
   const hintKey = 'lecturekaki:login-hint:v1'
   const fetcher = vi.fn()
-  function store(key: string, value: unknown) {
+  const store = (key: string, value: unknown) =>
     sessionStorage.setItem(key, JSON.stringify(value))
-  }
   beforeEach(() => {
     sessionStorage.clear()
     localStorage.clear()
@@ -35,11 +41,6 @@ describe('sign-in', () => {
       json: async () => ({ access_token: 'new-token', expires_in: 900 }),
     })
     vi.stubGlobal('fetch', fetcher)
-  })
-  afterEach(() => {
-    vi.restoreAllMocks()
-    vi.unstubAllGlobals()
-    vi.unstubAllEnvs()
   })
 
   it('requires sign-in without a tab session', async () => {
@@ -113,7 +114,6 @@ describe('live connection', () => {
     onopen?: () => void
     onclose?: () => void
     onmessage?: (event: { data: string }) => void
-    onerror?: () => void
     send = vi.fn()
     close = vi.fn(() => {
       this.readyState = 3
@@ -132,10 +132,6 @@ describe('live connection', () => {
       path: '/rooms/room-a/live?ticket=one',
       session_expires_at: Date.now() / 1000 + 900,
     })
-  })
-  afterEach(() => {
-    vi.useRealTimers()
-    vi.unstubAllGlobals()
   })
   function handlers() {
     return {
@@ -158,13 +154,8 @@ describe('live connection', () => {
     const socket = Socket.instances[0]
     socket.onopen?.()
     for (const room_id of ['room-a', 'room-b']) {
-      socket.onmessage?.({
-        data: JSON.stringify({
-          type: 'message.deleted',
-          room_id,
-          message_id: 'm1',
-        }),
-      })
+      const event = { type: 'message.deleted', room_id, message_id: 'm1' }
+      socket.onmessage?.({ data: JSON.stringify(event) })
     }
     expect(h.onEvent).not.toHaveBeenCalled()
     finish()

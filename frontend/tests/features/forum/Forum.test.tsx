@@ -65,19 +65,14 @@ const pointer = {
   path: 'lectures/2026-2027/sem-1/test/',
 }
 const weeks = [
-  {
-    week: 'week-10',
-    startDate: '2026-10-19',
-    endDate: '2026-10-25',
-    sessionCount: 1,
-  },
-  {
-    week: 'week-11',
-    startDate: '2026-10-26',
-    endDate: '2026-11-01',
-    sessionCount: 1,
-  },
-]
+  ['week-10', '2026-10-19', '2026-10-25'],
+  ['week-11', '2026-10-26', '2026-11-01'],
+].map(([week, startDate, endDate]) => ({
+  week,
+  startDate,
+  endDate,
+  sessionCount: 1,
+}))
 const snapshot: LectureSnapshot = {
   pointer,
   index: {
@@ -98,12 +93,11 @@ const own = {
   expires_at: new Date(Date.now() + 86400000).toISOString(),
 }
 let receive: (event: RoomEvent) => void
-function emit(event: RoomEvent) {
-  act(() => receive(event))
+function reply(message: forumApi.MessageOut) {
+  act(() => receive({ type: 'message.created', room_id: roomId, message }))
 }
-function messageBox() {
-  return screen.getByLabelText<HTMLTextAreaElement>('Your message')
-}
+const messageBox = () =>
+  screen.getByLabelText<HTMLTextAreaElement>('Your message')
 function change(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
 }
@@ -132,10 +126,7 @@ beforeEach(() => {
     sessions: [week === 'week-10' ? lecture : laterLecture],
   }))
   api.getCurrentUser.mockResolvedValue({ user_id: own.author_id })
-  api.getMessages.mockResolvedValue({
-    items: [own],
-    next_cursor: null,
-  })
+  api.getMessages.mockResolvedValue({ items: [own], next_cursor: null })
   api.deleteMessage.mockResolvedValue()
   vi.mocked(subscribeToRoom).mockImplementation((_room, _token, handlers) => {
     receive = handlers.onEvent
@@ -153,22 +144,18 @@ it('loads history, delivers live replies and posts/deletes owned messages', asyn
   api.postMessage.mockResolvedValueOnce(message)
   renderForum()
   await screen.findByText(own.content)
-  emit({
-    type: 'message.created',
-    room_id: roomId,
-    message: {
-      ...own,
-      message_id: '2-b',
-      author_id: 'student-b',
-      content: 'Live reply',
-    },
+  reply({
+    ...own,
+    message_id: '2-b',
+    author_id: 'student-b',
+    content: 'Live reply',
   })
   expect(screen.getByText('Live reply')).toBeTruthy()
   expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(1)
   change('Your message', message.content)
   fireEvent.click(screen.getByRole('button', { name: 'Send' }))
   await screen.findByText(message.content)
-  emit({ type: 'message.created', room_id: roomId, message })
+  reply(message)
   expect(screen.getAllByText(message.content)).toHaveLength(1)
   expect(api.postMessage).toHaveBeenCalledOnce()
   expect(messageBox().value).toBe('')

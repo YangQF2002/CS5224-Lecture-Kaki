@@ -130,7 +130,7 @@ async def live_messages(websocket: WebSocket, room_id: RoomId, ticket: str = "")
                 # The socket delivers events; posting and deletion stay authenticated HTTP operations.
                 try:
                     payload = json.loads(await websocket.receive_text())
-                except (json.JSONDecodeError, KeyError):
+                except json.JSONDecodeError, KeyError:
                     await websocket.close(code=1008)
                     break
                 if payload != {"action": "ping"}:
