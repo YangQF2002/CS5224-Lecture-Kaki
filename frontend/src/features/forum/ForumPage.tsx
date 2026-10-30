@@ -1,45 +1,24 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
-import {
-  confirmSignedIn,
-  getAccessToken,
-  signOut,
-  startSignIn,
-  subscribeToSignOut,
-  tryAutomaticSignIn,
-} from './auth.ts'
-import {
-  deleteMessage,
-  ForumApiError,
-  getCurrentUser,
-  getMessages,
-  needsSignIn,
-  postMessage,
-  type MessageOut,
-} from './forumApi.ts'
-import {
-  subscribeToRoom,
-  type LiveStatus,
-  type RoomEvent,
-} from './forumSocket.ts'
-import {
-  lectureDate,
-  lectureTime,
-  resolveRoom,
-  RoomNotFound,
-  roomPath,
-  type LectureRoom,
-} from './roomCatalogue.ts'
-import {
-  clearRoomSession,
-  forgetRoom,
-  readDraft,
-  rememberRoom,
-  saveDraft,
-} from './roomSession.ts'
+// prettier-ignore
+import { confirmSignedIn, getAccessToken, signOut, startSignIn, subscribeToSignOut, tryAutomaticSignIn } from './auth.ts'
+// prettier-ignore
+import { deleteMessage, ForumApiError, getCurrentUser, getMessages, needsSignIn, postMessage, type MessageOut } from './forumApi.ts'
+// prettier-ignore
+import { subscribeToRoom, type LiveStatus, type RoomEvent } from './forumSocket.ts'
+// prettier-ignore
+import { lectureDate, lectureTime, resolveRoom, RoomNotFound, roomPath, type LectureRoom } from './roomCatalogue.ts'
+// prettier-ignore
+import { clearRoomSession, forgetRoom, readDraft, rememberRoom, saveDraft } from './roomSession.ts'
 import './forum.css'
 
 const MAX_CONTENT = 500
+const LIVE_LABELS: Record<LiveStatus, string> = {
+  connecting: 'Connecting live updates…',
+  connected: 'Live updates connected',
+  reconnecting: 'Reconnecting live updates…',
+  unavailable: 'Live updates unavailable — use Refresh',
+}
 
 function mergeMessages(
   deleted: Set<string>,
@@ -105,6 +84,21 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
     !composerDisabled && !!content.trim() && characterCount <= MAX_CONTENT
   const discussionLink = `${location.origin}${roomPath(roomId)}`
 
+  function addMessage(message: MessageOut) {
+    for (const arrived of pendingHistory.current)
+      arrived.set(message.message_id, message)
+    setMessages((previous) =>
+      mergeMessages(deletedIds.current, previous, [message]),
+    )
+  }
+
+  function removeMessage(messageId: string) {
+    deletedIds.current.add(messageId)
+    setMessages((previous) =>
+      previous.filter((message) => message.message_id !== messageId),
+    )
+  }
+
   useEffect(
     () => () => {
       interactionVersion.current += 1
@@ -154,18 +148,8 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
     }
     function onEvent(event: RoomEvent) {
       if (cancelled) return
-      if (event.type === 'message.created') {
-        for (const arrived of pendingHistory.current)
-          arrived.set(event.message.message_id, event.message)
-        setMessages((previous) =>
-          mergeMessages(deletedIds.current, previous, [event.message]),
-        )
-      } else {
-        deletedIds.current.add(event.message_id)
-        setMessages((previous) =>
-          previous.filter((message) => message.message_id !== event.message_id),
-        )
-      }
+      if (event.type === 'message.created') addMessage(event.message)
+      else removeMessage(event.message_id)
     }
     async function init() {
       try {
@@ -276,11 +260,7 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
     try {
       const message = await postMessage(roomId, content.trim(), getAccessToken)
       if (version !== interactionVersion.current) return
-      for (const arrived of pendingHistory.current)
-        arrived.set(message.message_id, message)
-      setMessages((previous) =>
-        mergeMessages(deletedIds.current, previous, [message]),
-      )
+      addMessage(message)
       if (readDraft(roomId) === content) saveDraft(roomId, '')
       setContent('')
       bottomRef.current?.scrollIntoView?.({
@@ -302,18 +282,12 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
     try {
       await deleteMessage(roomId, messageId, getAccessToken)
       if (version !== interactionVersion.current) return
-      deletedIds.current.add(messageId)
-      setMessages((previous) =>
-        previous.filter((message) => message.message_id !== messageId),
-      )
+      removeMessage(messageId)
     } catch (error) {
       if (version !== interactionVersion.current) return
       if (needsSignIn(error)) setUnauthenticated(true)
       else if (error instanceof ForumApiError && error.status === 404) {
-        deletedIds.current.add(messageId)
-        setMessages((previous) =>
-          previous.filter((message) => message.message_id !== messageId),
-        )
+        removeMessage(messageId)
       } else setSendError('Failed to delete message. Please try again.')
     }
   }
@@ -383,15 +357,7 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
         )}
       </div>
       <div className="forum-actions">
-        <span role="status">
-          {liveStatus === 'connected'
-            ? 'Live updates connected'
-            : liveStatus === 'unavailable'
-              ? 'Live updates unavailable — use Refresh'
-              : liveStatus === 'reconnecting'
-                ? 'Reconnecting live updates…'
-                : 'Connecting live updates…'}
-        </span>
+        <span role="status">{LIVE_LABELS[liveStatus]}</span>
         <button className="secondary" onClick={refresh} disabled={loading}>
           Refresh
         </button>

@@ -1,23 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
-import {
-  chooseDefaultWeek,
-  singaporeNow,
-  weekName,
-} from '../discovery/discoveryFilters.ts'
-import {
-  fetchLectureSnapshot,
-  fetchWeekSessions,
-} from '../discovery/lectureApi.ts'
+// prettier-ignore
+import { chooseDefaultWeek, singaporeNow, weekName } from '../discovery/discoveryFilters.ts'
+// prettier-ignore
+import { fetchLectureSnapshot, fetchWeekSessions } from '../discovery/lectureApi.ts'
 import type { LectureSnapshot, WeekSessions } from '../discovery/types.ts'
-import {
-  lectureDate,
-  lectureTime,
-  parseRoomId,
-  roomFromLink,
-  roomIdFor,
-  roomPath,
-} from './roomCatalogue.ts'
+// prettier-ignore
+import { lectureDate, lectureTime, parseRoomId, roomFromLink, roomIdFor, roomPath } from './roomCatalogue.ts'
 import { lastForumPath, lastRoom, rememberPicker } from './roomSession.ts'
 import './forum.css'
 

@@ -1,16 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  completeSignIn,
-  getAccessToken,
-  SignInRequired,
-  signOut,
-  startSignIn,
-  tryAutomaticSignIn,
-} from '../../../src/features/forum/auth.ts'
-import {
-  ForumApiError,
-  getConnectionTicket,
-} from '../../../src/features/forum/forumApi.ts'
+// prettier-ignore
+import { completeSignIn, getAccessToken, SignInRequired, signOut, startSignIn, tryAutomaticSignIn } from '../../../src/features/forum/auth.ts'
+// prettier-ignore
+import { ForumApiError, getConnectionTicket } from '../../../src/features/forum/forumApi.ts'
 import { subscribeToRoom } from '../../../src/features/forum/forumSocket.ts'
 
 vi.mock('../../../src/features/forum/forumApi.ts', async (original) => ({
@@ -24,6 +16,10 @@ describe('sign-in', () => {
   const sessionKey = 'lecturekaki:auth:v1'
   const loginKey = 'lecturekaki:login:v1'
   const hintKey = 'lecturekaki:login-hint:v1'
+  const fetcher = vi.fn()
+  function store(key: string, value: unknown) {
+    sessionStorage.setItem(key, JSON.stringify(value))
+  }
   beforeEach(() => {
     sessionStorage.clear()
     localStorage.clear()
@@ -34,18 +30,17 @@ describe('sign-in', () => {
     })
     vi.stubEnv('VITE_COGNITO_DOMAIN', 'https://login.example')
     vi.stubEnv('VITE_COGNITO_CLIENT_ID', 'public-client')
+    fetcher.mockReset().mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'new-token', expires_in: 900 }),
+    })
+    vi.stubGlobal('fetch', fetcher)
   })
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
   })
-  function response() {
-    return {
-      ok: true,
-      json: async () => ({ access_token: 'new-token', expires_in: 900 }),
-    }
-  }
 
   it('requires sign-in without a tab session', async () => {
     await expect(getAccessToken()).rejects.toBeInstanceOf(SignInRequired)
@@ -59,16 +54,11 @@ describe('sign-in', () => {
     expect(pending.returnTo).toBe('/forum/selected-room')
   })
   it('exchanges a valid callback once and restores the room', async () => {
-    sessionStorage.setItem(
-      loginKey,
-      JSON.stringify({
-        state: 'matching',
-        verifier: 'test-verifier',
-        returnTo: '/forum/selected-room',
-      }),
-    )
-    const fetcher = vi.fn().mockResolvedValue(response())
-    vi.stubGlobal('fetch', fetcher)
+    store(loginKey, {
+      state: 'matching',
+      verifier: 'test-verifier',
+      returnTo: '/forum/selected-room',
+    })
     const url =
       'http://localhost:5173/auth/callback?code=primary-code&state=matching'
     expect(
@@ -78,16 +68,11 @@ describe('sign-in', () => {
     expect(await getAccessToken()).toBe('new-token')
   })
   it('rejects an incorrect callback state before exchanging a code', async () => {
-    sessionStorage.setItem(
-      loginKey,
-      JSON.stringify({
-        state: 'expected',
-        verifier: 'test-verifier',
-        returnTo: '/forum',
-      }),
-    )
-    const fetcher = vi.fn()
-    vi.stubGlobal('fetch', fetcher)
+    store(loginKey, {
+      state: 'expected',
+      verifier: 'test-verifier',
+      returnTo: '/forum',
+    })
     await expect(
       completeSignIn(
         'http://localhost:5173/auth/callback?code=bad-primary-code&state=wrong',
@@ -96,15 +81,11 @@ describe('sign-in', () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
   it('refreshes an expired access token', async () => {
-    sessionStorage.setItem(
-      sessionKey,
-      JSON.stringify({
-        access_token: 'old',
-        refresh_token: 'test-refresh',
-        expires_at: 0,
-      }),
-    )
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response()))
+    store(sessionKey, {
+      access_token: 'old',
+      refresh_token: 'test-refresh',
+      expires_at: 0,
+    })
     expect(await getAccessToken()).toBe('new-token')
   })
   it('automatically reconnects a returning user in a fresh tab', async () => {
@@ -114,10 +95,7 @@ describe('sign-in', () => {
     expect(sessionStorage.getItem(sessionKey)).toBeNull()
   })
   it('clears the session and returns through Cognito logout', async () => {
-    sessionStorage.setItem(
-      sessionKey,
-      JSON.stringify({ access_token: 'old', expires_at: Date.now() + 900000 }),
-    )
+    store(sessionKey, { access_token: 'old', expires_at: Date.now() + 900000 })
     await signOut()
     expect(sessionStorage.getItem(sessionKey)).toBeNull()
     await expect(getAccessToken()).rejects.toBeInstanceOf(SignInRequired)
@@ -131,7 +109,6 @@ describe('live connection', () => {
   class Socket {
     static OPEN = 1
     static instances: Socket[] = []
-    url: string
     readyState = 1
     onopen?: () => void
     onclose?: () => void
@@ -142,8 +119,7 @@ describe('live connection', () => {
       this.readyState = 3
       this.onclose?.()
     })
-    constructor(url: string) {
-      this.url = url
+    constructor() {
       Socket.instances.push(this)
     }
   }
@@ -181,24 +157,24 @@ describe('live connection', () => {
     await vi.advanceTimersByTimeAsync(0)
     const socket = Socket.instances[0]
     socket.onopen?.()
-    socket.onmessage?.({
-      data: JSON.stringify({
-        type: 'message.deleted',
-        room_id: 'room-a',
-        message_id: 'm1',
-      }),
-    })
-    socket.onmessage?.({
-      data: JSON.stringify({
-        type: 'message.deleted',
-        room_id: 'room-b',
-        message_id: 'm2',
-      }),
-    })
+    for (const room_id of ['room-a', 'room-b']) {
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: 'message.deleted',
+          room_id,
+          message_id: 'm1',
+        }),
+      })
+    }
     expect(h.onEvent).not.toHaveBeenCalled()
     finish()
     await vi.advanceTimersByTimeAsync(0)
     expect(h.onEvent).toHaveBeenCalledOnce()
+    expect(h.onEvent.mock.calls[0][0]).toEqual({
+      type: 'message.deleted',
+      room_id: 'room-a',
+      message_id: 'm1',
+    })
     socket.close()
     await vi.advanceTimersByTimeAsync(1000)
     expect(getConnectionTicket).toHaveBeenCalledTimes(2)

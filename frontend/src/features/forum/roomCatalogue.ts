@@ -1,7 +1,5 @@
-import {
-  fetchLectureSnapshot,
-  fetchWeekSessions,
-} from '../discovery/lectureApi.ts'
+// prettier-ignore
+import { fetchLectureSnapshot, fetchWeekSessions } from '../discovery/lectureApi.ts'
 import type { LecturePointer, LectureSession } from '../discovery/types.ts'
 
 const ROOM_PATTERN =

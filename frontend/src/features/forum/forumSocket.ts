@@ -1,10 +1,5 @@
-import {
-  ForumApiError,
-  needsSignIn,
-  getConnectionTicket,
-  forumSocketUrl,
-  type MessageOut,
-} from './forumApi.ts'
+// prettier-ignore
+import { ForumApiError, needsSignIn, getConnectionTicket, forumSocketUrl, type MessageOut } from './forumApi.ts'
 
 export type RoomEvent =
   | { type: 'message.created'; room_id: string; message: MessageOut }
