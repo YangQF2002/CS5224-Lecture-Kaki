@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router'
-import {
-  getAccessToken,
-  SignInRequired,
-  signOut,
-  startSignIn,
-} from '../auth/auth.ts'
+import { getAccessToken, SignInRequired, signOut, startSignIn } from './auth.ts'
 import {
   deleteMessage,
   ForumApiError,

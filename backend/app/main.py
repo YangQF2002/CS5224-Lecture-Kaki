@@ -4,11 +4,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.config import frontend_origins
 from app.health import router as health_router
 from app.modules.auth import router as auth_router
 from app.modules.forum import router as forum_router
 from app.modules.forum.repository import ForumStorageUnavailable
+from app.modules.forum.service import frontend_origins
 
 app = FastAPI(
     title="LectureKaki API",

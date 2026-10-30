@@ -1,4 +1,4 @@
-import { SignInRequired } from '../auth/auth.ts'
+import { SignInRequired } from './auth.ts'
 import {
   ForumApiError,
   getConnectionTicket,

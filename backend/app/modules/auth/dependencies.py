@@ -108,4 +108,4 @@ def get_current_user(
     except InvalidTokenError, PyJWKClientError:
         raise _unauthorised() from None
 
-    return CurrentUser(user_id=claims["sub"], token_expires_at=claims["exp"])
+    return CurrentUser(user_id=claims["sub"])

@@ -1,8 +1,8 @@
 # Forum
 
-Students join a discussion from a lecture card in Discover, sign in with Cognito,
-and post messages of up to 500 characters. Only the author can delete a message.
-Messages disappear after 24 hours. A shared room ID can also be opened at `/forum`.
+Students open `/forum`, enter a shared room ID, sign in with Cognito, and post
+messages of up to 500 characters. Only the author can delete a message.
+Messages disappear after 24 hours.
 
 ## API
 
@@ -17,8 +17,10 @@ Forum HTTP routes require a Cognito access token.
 | WebSocket | `/rooms/{room_id}/live?ticket=...` | Receive message creation and deletion events. |
 
 Room IDs combine the unchanged lecture session ID with the academic year and
-semester: `<sessionId>@<acadYear>@<semester>`. Validation checks the format rather
-than looking up the lecture catalogue. See [lecture data](lecture-data.md#session-ids).
+semester: `<sessionId>@<acadYear>@<semester>`, for example
+`CS5224-LEC-1@2026-10-27-1830-LT17@2026-2027@1`. Validation checks the format
+rather than looking up the lecture catalogue. See
+[lecture data](lecture-data.md#session-ids).
 
 ## Storage and live updates
 
@@ -67,14 +69,14 @@ docker compose --env-file frontend/.env.local up --build frontend
 
 ## Deployment
 
-The API identity needs the four DynamoDB actions in the
-[runtime policy example](../infra/forum-runtime-policy.example.json). On EC2, use
-an instance role. Local Compose does not mount host AWS credentials.
+The API identity needs `dynamodb:GetItem`, `PutItem`, `Query` and `DeleteItem`
+on the configured table. Reuse the shared development table; table provisioning
+and the shared website/API deployment are managed separately. On EC2, use an
+instance role. Local Compose does not mount host AWS credentials.
 
-[`infra/forum.yaml`](../infra/forum.yaml) defines storage only; set
-`ExistingTableName` to reuse a table. The optional
-[Deploy Forum storage workflow](../.github/workflows/deploy-forum.yml) also deploys
-storage only. Website and API hosting are separate; see [architecture](architecture.md).
+The Cognito client must allow the frontend's exact callback and logout URLs.
+For Vite, use `http://localhost:5173/auth/callback` and
+`http://localhost:5173/forum`; for Docker, use port 8080.
 
 For hosted use, set `VITE_API_URL` to the HTTPS API address, include the website
 origin in `FRONTEND_ORIGINS`, and register its `/auth/callback` and `/forum` URLs
@@ -86,8 +88,8 @@ frontend after changing its configuration. The HTTP proxy must support WebSocket
 From the repository root:
 
 ```sh
-docker compose run --build --rm backend-test
-docker compose run --build --rm frontend-test
+docker compose run --build --rm backend-test python -m pytest -p no:cacheprovider tests/test_forum.py
+docker compose run --build --rm frontend-test npm test -- tests/features/forum
 ```
 
 For a manual check, sign in as two different users in separate browser sessions:

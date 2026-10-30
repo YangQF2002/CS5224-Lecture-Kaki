@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -116,3 +117,14 @@ def collect_page(
 
     next_cursor = encode_cursor(last_key, room_id) if last_key else None
     return collected, next_cursor
+
+
+def frontend_origins() -> list[str]:
+    # Match the timetable contract while keeping the earlier Forum setting valid.
+    configured = os.getenv(
+        "FRONTEND_ORIGINS",
+        os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:8080"),
+    )
+    return [
+        origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()
+    ]

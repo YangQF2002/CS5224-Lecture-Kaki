@@ -7,7 +7,9 @@ Scheduled jobs and Cognito triggers are packaged separately as Lambdas.
 ## Target AWS deployment
 
 S3 and CloudFront serve the React build and lecture JSON; an EC2 instance runs
-the FastAPI container behind Caddy. There is no API Gateway.
+the FastAPI container behind Caddy. There is no API Gateway. Forum persists
+messages in DynamoDB and delivers live events through the same API's WebSockets.
+The prototype uses one API instance and one Uvicorn worker for in-memory rooms.
 
 ```mermaid
 flowchart LR
@@ -19,11 +21,11 @@ flowchart LR
 
         subgraph region["Region: ap-southeast-1"]
             bucket[("Private S3 bucket<br/>React build + lectures/ snapshots")]
+            forumdb[("DynamoDB<br/>Forum messages + temporary tickets")]
             cognito["Cognito user pool + hosted login"]
             signup["Pre-signup Lambda<br/>NUS email validation"]
             scheduler["EventBridge Scheduler<br/>Monday 03:00 Singapore time"]
             ingest["Ingestion Lambda<br/>jobs/lecture_ingest/"]
-            forum[("DynamoDB<br/>Forum messages + short-lived tickets")]
 
             subgraph network["VPC / public subnet"]
                 subgraph ec2["EC2 instance"]
@@ -38,10 +40,11 @@ flowchart LR
     cloudfront -->|"Read origin through OAC"| bucket
     browser <-->|"Hosted login and code exchange with PKCE"| cognito
     cognito -->|"Validate new signups"| signup
-    browser -->|"HTTPS API + Bearer token; room WebSockets"| proxy
+    browser -->|"HTTPS API + Bearer access token"| proxy
     proxy -->|"HTTP to 127.0.0.1:8000"| api
     api -.->|"Fetch and cache public signing keys"| cognito
-    api -->|"Read/write Forum history and tickets"| forum
+    browser <-->|"Live Forum events over WSS"| proxy
+    api -->|"Read/write Forum records"| forumdb
     browser -.->|"Current timetable fetches directly"| nusmods
     scheduler -->|"Invoke; job checks whether ingestion is due"| ingest
     ingest -->|"Fetch module and venue data"| nusmods
@@ -53,7 +56,7 @@ flowchart LR
     classDef identity fill:#faf5ff,stroke:#9333ea,color:#3b0764
     class browser,nusmods client
     class proxy,api,ingest,signup compute
-    class bucket,cloudfront,forum storage
+    class bucket,cloudfront,forumdb storage
     class cognito identity
 ```
 
@@ -69,16 +72,15 @@ artifact bucket.
 | `auth` | `infra/auth.yaml` | Cognito user pool, hosted login, pre-signup Lambda | Template ready |
 | `hosting` | `infra/hosting.yaml` | Web bucket (exports name and ARN), CloudFront with OAC, app routing function | Template ready |
 | `ingest` | `infra/ingest.yaml` | Ingestion Lambda, schedule, logs, failure alarm | Template ready |
-| `api` | — | EC2, Caddy, shared FastAPI HTTP/WebSocket container | Hosted deployment required |
-| `forum` | `infra/forum.yaml` | Forum table, or reference to an existing table | Template ready; see [Forum setup](forum.md) |
+| `api` | — | EC2, Caddy, FastAPI container | Not started |
 
 ### Website hosting
 
 CloudFront reads the private bucket through OAC and caches by each object's
 `Cache-Control` header (minimum TTL 0). A viewer-request function serves
-`index.html` for app routes, including `/auth/callback` and Forum room IDs
-containing periods; `/assets/*` and `/lectures/*` are passed through, so missing
-files stay errors. Responses carry
+`index.html` for extensionless paths such as `/auth/callback` and for `/forum/*`
+room links, including IDs containing periods; `/assets/*` and
+`/lectures/*` are passed through, so missing files stay errors. Responses carry
 the managed security headers policy.
 
 Upload builds with `assets/` as `immutable` and the rest as `no-cache`, and
@@ -93,17 +95,18 @@ exclude `lectures/*` so `--delete` keeps lecture data; see
 4. `get_current_user` validates the token and returns the Cognito `sub` as the
    user ID.
 
-Authentication uses the public Cognito settings. Forum storage also requires
-`DYNAMODB_TABLE` and an AWS runtime identity with table access; use an instance
-role on EC2. See [Forum setup](forum.md).
+Token validation uses `AWS_REGION`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`
+and `COGNITO_DOMAIN`, without a client secret. Forum also needs `DYNAMODB_TABLE`
+and AWS credentials with table access. `FRONTEND_ORIGINS` controls HTTP and
+WebSocket origins; see [Forum setup](forum.md).
 
 ### Still to build
 
 - **EC2 API:** stable DNS name, Caddy for HTTPS, backend bound to
   `127.0.0.1:8000`, auto-restart, CloudWatch logs and health monitoring.
-- **Hosted integration:** configure `FRONTEND_ORIGINS`, the API URL and exact
-  Cognito callback/logout URLs for the deployed website. Forum login, refresh
-  and logout are implemented; timetable account synchronization is separate.
+- **Hosted configuration:** set the website/API origins and register exact
+  frontend callback/logout URLs. Forum implements CORS and browser login,
+  callback handling, refresh and logout.
 - **Lecture discovery P2–P4:** interest topics, timetable-aware suggestions and
   login features; see [lecture discovery](lecture-discovery.md).
 
@@ -121,8 +124,7 @@ References: [authentication](authentication.md), [lecture data](lecture-data.md)
 frontend/src/features/
   discovery/              Lecture discovery page; filters static /lectures/ data
   timetable/              Timetable UI, NUSMods import, clash detection, storage
-  forum/                  Lecture discussion UI, API client and live updates
-  auth/                   Cognito login, callback, refresh and logout
+  forum/                  Discussions, browser login, history and live updates
 backend/
   app/                    FastAPI application and API modules
   jobs/lecture_ingest/    Scheduled ingestion job (own Lambda; handler.py entry)
@@ -141,10 +143,8 @@ backend/app/
     api.py                Routes
     dependencies.py       Token validation and signing-key cache
     schemas.py            Data contracts
+  modules/forum/          Forum routes, rules, DynamoDB access and live rooms
 ```
-
-The Forum includes native WebSocket delivery in `app/modules/forum/`. Its room
-registry requires one API worker/instance for the MVP; see [Forum setup](forum.md).
 
 Add features under `app/modules/<feature>/` and register their routers in
 `main.py`. Each module owns its schemas, rules and data access; other modules use

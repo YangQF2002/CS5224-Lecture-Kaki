@@ -95,7 +95,7 @@ $changeSetArn = '<printed-change-set-arn>'
 aws cloudformation describe-change-set --change-set-name $changeSetArn --region ap-southeast-1 --profile $awsProfile
 ```
 
-Defaults include the Swagger callback/logout URLs and the Forum browser URLs at localhost ports 5173 and 8080 (`/auth/callback` and `/forum`). Override `CallbackURLs` and `LogoutURLs` for a hosted client, preserving other approved callers.
+Defaults are callback `http://localhost:8000/docs/oauth2-redirect` and logout destination `http://localhost:8000/docs`. Override `CallbackURLs` and `LogoutURLs` for a different client.
 
 ### Apply and verify
 

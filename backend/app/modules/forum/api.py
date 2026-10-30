@@ -5,23 +5,30 @@ import json
 from time import time
 from typing import Annotated
 
+import jwt
 from botocore.exceptions import ClientError
 from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
     Query,
+    Request,
     WebSocket,
     WebSocketDisconnect,
 )
 from fastapi.concurrency import run_in_threadpool
 
-from app.config import frontend_origins
 from app.modules.auth import CurrentUser, get_current_user
 
 from . import realtime, repository
 from .schemas import ConnectionTicket, MessageIn, MessageOut, MessagePage, RoomId
-from .service import collect_page, decode_cursor, item_to_message, make_message
+from .service import (
+    collect_page,
+    decode_cursor,
+    frontend_origins,
+    item_to_message,
+    make_message,
+)
 
 router = APIRouter(prefix="/rooms", tags=["Forum"])
 
@@ -44,11 +51,14 @@ async def post_message(
 
 
 @router.post("/{room_id}/connection-ticket", status_code=201)
-def connection_ticket(room_id: RoomId, user: _Auth) -> ConnectionTicket:
-    if user.token_expires_at is None:
-        raise HTTPException(status_code=401, detail="Access token expiry is required")
+def connection_ticket(
+    room_id: RoomId, user: _Auth, request: Request
+) -> ConnectionTicket:
+    # The shared get_current_user dependency has verified this exact bearer token.
+    token = request.headers["authorization"].partition(" ")[2]
+    expires_at = int(jwt.decode(token, options={"verify_signature": False})["exp"])
     try:
-        return realtime.issue_ticket(room_id, user.user_id, user.token_expires_at)
+        return realtime.issue_ticket(room_id, user.user_id, expires_at)
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 

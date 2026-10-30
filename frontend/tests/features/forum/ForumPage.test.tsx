@@ -20,10 +20,10 @@ import {
   subscribeToRoom,
   type RoomEvent,
 } from '../../../src/features/forum/forumSocket.ts'
-import { SignInRequired } from '../../../src/features/auth/auth.ts'
+import { SignInRequired } from '../../../src/features/forum/auth.ts'
 
-vi.mock('../../../src/features/auth/auth.ts', async (original) => ({
-  ...(await original<typeof import('../../../src/features/auth/auth.ts')>()),
+vi.mock('../../../src/features/forum/auth.ts', async (original) => ({
+  ...(await original<typeof import('../../../src/features/forum/auth.ts')>()),
   getAccessToken: vi.fn().mockResolvedValue('access-token'),
 }))
 vi.mock('../../../src/features/forum/forumApi.ts', async (original) => ({

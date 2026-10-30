@@ -454,6 +454,37 @@ def test_ticket_requires_authentication(client):
     assert client.post(f"/rooms/{VALID_ROOM}/connection-ticket").status_code == 401
 
 
+def test_ticket_uses_expiry_from_the_validated_access_token(client, signing_key):
+    token = _make_token(signing_key, USER_A)
+    expiry = jwt.decode(token, options={"verify_signature": False})["exp"]
+    response = client.post(
+        f"/rooms/{VALID_ROOM}/connection-ticket",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 201
+    assert response.json()["session_expires_at"] == expiry
+
+
+@pytest.mark.parametrize("invalid", ["signature", "expiry", "client"])
+def test_ticket_rejects_invalid_access_tokens(client, signing_key, invalid):
+    claims = jwt.decode(
+        _make_token(signing_key, USER_A), options={"verify_signature": False}
+    )
+    key = signing_key
+    if invalid == "signature":
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    elif invalid == "expiry":
+        claims["exp"] = int(time()) - 1
+    else:
+        claims["client_id"] = "another-client"
+    token = jwt.encode(claims, key, algorithm="RS256", headers={"kid": "forum-key"})
+    response = client.post(
+        f"/rooms/{VALID_ROOM}/connection-ticket",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 401
+
+
 def test_live_post_and_delete_reach_two_signed_in_users(client, signing_key):
     a = ticket_path(client, signing_key, user=USER_A)
     b = ticket_path(client, signing_key, user=USER_B)
@@ -635,7 +666,7 @@ def test_cors_allows_post_and_future_timetable_put(client):
 
 
 def test_frontend_origins_prefers_shared_setting(monkeypatch):
-    from app.config import frontend_origins
+    from app.modules.forum.service import frontend_origins
 
     monkeypatch.setenv(
         "FRONTEND_ORIGINS", " https://site.example/ , http://localhost:5173 "

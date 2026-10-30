@@ -5,7 +5,7 @@ import {
   SignInRequired,
   signOut,
   startSignIn,
-} from '../../../src/features/auth/auth.ts'
+} from '../../../src/features/forum/auth.ts'
 
 beforeEach(() => {
   sessionStorage.clear()

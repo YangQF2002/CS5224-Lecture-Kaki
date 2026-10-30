@@ -10,8 +10,8 @@ export default function ForumHome() {
       <header>
         <h1>Lecture Forum</h1>
         <p>
-          Choose a lecture in Discover and select Join discussion. Messages
-          disappear after 24 hours.
+          Open a lecture discussion using its room ID. Messages disappear after
+          24 hours.
         </p>
       </header>
       <p>

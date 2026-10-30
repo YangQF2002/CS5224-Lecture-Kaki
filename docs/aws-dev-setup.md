@@ -23,7 +23,7 @@ aws sso login --profile cs5224-dev   # when the session expires
 export AWS_PROFILE=cs5224-dev AWS_REGION=ap-southeast-1
 ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 ARTIFACT_BUCKET=lecturekaki-artifacts-$ACCOUNT
-DOMAIN_PREFIX='lecturekaki-<name>-dev'   # must be globally unique
+DOMAIN_PREFIX=lecturekaki-<name>-dev   # must be globally unique
 
 # Once per account
 aws s3 mb s3://$ARTIFACT_BUCKET
@@ -101,25 +101,10 @@ aws s3 cp s3://$WEB_BUCKET/lectures/current.json -
 
 ## 6. Deploy the frontend
 
-Build with Docker (or `npm ci && npm run build` in `frontend/` with Node 24.22.1 or newer in the 24.x line), then upload. Hashed assets are cached for a year and `index.html` is always revalidated, so no CloudFront invalidation is needed. The `lectures/*` exclusion keeps `--delete` from removing lecture data.
-
-Deploy the shared API separately and register the hosted callback/logout URLs
-with Cognito before testing Forum login; see [Forum setup](forum.md#deployment).
-Use the existing public Cognito outputs and the real HTTPS API address:
+Build with Docker (or `npm ci && npm run build` in `frontend/` with Node 24), then upload. Hashed assets are cached for a year and `index.html` is always revalidated, so no CloudFront invalidation is needed. The `lectures/*` exclusion keeps `--delete` from removing lecture data.
 
 ```sh
-API_URL='https://<api-host>'
-COGNITO_CLIENT_ID=$(aws cloudformation describe-stacks --stack-name lecture-kaki-auth-dev \
-  --query "Stacks[0].Outputs[?OutputKey=='ClientId'].OutputValue" --output text)
-COGNITO_DOMAIN=$(aws cloudformation describe-stacks --stack-name lecture-kaki-auth-dev \
-  --query "Stacks[0].Outputs[?OutputKey=='HostedDomain'].OutputValue" --output text)
-
-docker build --target build -t lecture-kaki-frontend-build \
-  --build-arg VITE_API_URL="$API_URL" \
-  --build-arg VITE_COGNITO_DOMAIN="$COGNITO_DOMAIN" \
-  --build-arg VITE_COGNITO_CLIENT_ID="$COGNITO_CLIENT_ID" \
-  --build-arg VITE_COGNITO_REDIRECT_URI="$WEBSITE_URL/auth/callback" \
-  --build-arg VITE_COGNITO_LOGOUT_URI="$WEBSITE_URL/forum" frontend
+docker build --target build -t lecture-kaki-frontend-build frontend
 id=$(docker create lecture-kaki-frontend-build)
 rm -rf frontend/dist && docker cp $id:/app/dist frontend/dist && docker rm $id
 
@@ -142,6 +127,6 @@ aws cloudformation delete-stack --stack-name lecture-kaki-hosting-dev
 aws s3 rb s3://$WEB_BUCKET --force
 aws cloudformation delete-stack --stack-name lecture-kaki-auth-dev
 aws cloudformation wait stack-delete-complete --stack-name lecture-kaki-auth-dev
-aws cognito-idp delete-user-pool --user-pool-id '<UserPoolId>'
+aws cognito-idp delete-user-pool --user-pool-id <UserPoolId>
 aws s3 rb s3://$ARTIFACT_BUCKET --force
 ```

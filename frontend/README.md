@@ -41,9 +41,7 @@ Module search and timetable loading require access to the public NUSMods API.
 
 ## Forum
 
-Open `/forum` with a shared room ID, or select **Join discussion** on a Discover
-lecture card. Cognito login uses `/auth/callback`; signed-in users can post,
-receive live updates and delete their own messages.
-
-Configure the public API and Cognito values in `frontend/.env.local`; see
-[Forum setup](../docs/forum.md) for local configuration, Docker login and testing.
+Open `/forum` and enter a shared room ID to visit `/forum/:roomId`.
+Forum includes Cognito sign-in, token refresh, history and live WebSocket updates.
+Configure the public values in [`.env.example`](.env.example) and register
+`/auth/callback` and `/forum` in Cognito. See [Forum setup](../docs/forum.md).

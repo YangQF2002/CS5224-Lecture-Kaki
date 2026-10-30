@@ -23,12 +23,11 @@ reports that lecture data is unavailable.
 Compose reads optional runtime configuration from `backend/.env.local`. Create
 it from `backend/.env.example` only if it does not exist, then fill in the public
 Cognito values from your stack outputs. Environment files and credentials are
-excluded from Docker build contexts. Cognito token validation uses public
-configuration. Forum requests also need a DynamoDB table and an AWS identity with
-table access; Compose does not mount host AWS profiles. See
-[Forum setup](forum.md) for the native API workflow and Docker frontend login.
-Frontend configuration is supplied at build time.
-After changing backend configuration, recreate it:
+excluded from Docker build contexts. Cognito token validation needs no AWS
+credentials; Forum storage requires credentials with access to `DYNAMODB_TABLE`.
+Compose does not mount host AWS credentials; see [Forum setup](forum.md#local-development)
+for running the local API with a development profile.
+After changing configuration, recreate the backend:
 
 ```sh
 docker compose up -d --force-recreate backend
@@ -40,10 +39,21 @@ Authentication still uses the deployed Cognito pool. The existing callback
 `http://localhost:8000/docs/oauth2-redirect` and logout URL
 `http://localhost:8000/docs` remain valid with the default ports.
 
-Set `BACKEND_PORT` or `FRONTEND_PORT` in your shell to use other host ports.
-Update `VITE_API_URL` and browser callback/logout settings to match, rebuild the
-frontend, and register the exact callback/logout URLs in Cognito. The Swagger
-callback also changes if the API port changes. See [authentication](authentication.md).
+Forum's public frontend settings are build arguments from `frontend/.env.local`:
+
+```sh
+VITE_COGNITO_REDIRECT_URI=http://localhost:8080/auth/callback \
+VITE_COGNITO_LOGOUT_URI=http://localhost:8080/forum \
+docker compose --env-file frontend/.env.local up --build -d frontend
+```
+
+The default frontend callback/logout URLs use port 8080. Register them in Cognito;
+see [Forum configuration](forum.md#deployment). Rebuild the frontend after changing
+these values. The API uses `FRONTEND_ORIGINS` for HTTP and WebSocket origin checks.
+
+Set `BACKEND_PORT` or `FRONTEND_PORT` in your shell to use other host ports. If
+you change the API port, register the exact new callback and logout URLs with
+Cognito before testing login. See [authentication](authentication.md).
 
 These images run production processes without bind mounts or hot reload. Rebuild after
 source changes with `docker compose up --build -d --wait`. For hot reload,
@@ -88,7 +98,8 @@ The Dockerfiles follow [Docker's build best practices](https://docs.docker.com/b
   Lockfiles are copied before source so dependency layers can be reused.
   BuildKit cache mounts retain downloads without putting them in runtime layers.
 - Allowlist-based `.dockerignore` files exclude local environments, dependency
-  folders, caches, and credentials. Configuration is supplied at runtime.
+  folders, caches, and credentials. Backend configuration is supplied at runtime;
+  public frontend configuration is compiled into the build.
 - Runtime containers use non-root users, read-only filesystems, a writable
   temporary directory, dropped capabilities, and no privilege escalation.
 - Uvicorn and Nginx run in the foreground with exec-form commands. Logs go to

@@ -11,11 +11,11 @@ Parameters:
   CallbackURLs:
     Type: CommaDelimitedList
     Description: Exact approved callback URLs; HTTPS except for local development.
-    Default: http://localhost:8000/docs/oauth2-redirect,http://localhost:5173/auth/callback,http://localhost:8080/auth/callback
+    Default: http://localhost:8000/docs/oauth2-redirect
   LogoutURLs:
     Type: CommaDelimitedList
     Description: Exact approved destinations after hosted sign-out.
-    Default: http://localhost:8000/docs,http://localhost:5173/forum,http://localhost:8080/forum
+    Default: http://localhost:8000/docs
 
 Resources:
   PreSignUpLogGroup:
