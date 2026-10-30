@@ -1,6 +1,7 @@
 """Forum data contracts."""
 
 import re
+from datetime import date, time
 from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, Field
@@ -8,7 +9,7 @@ from pydantic import AfterValidator, BaseModel, Field
 # Format: <moduleCode>-LEC-<classNo>@<YYYY-MM-DD>-<HHMM>-<venue>@<acadYear>@<semester>
 # e.g.   BT1101-LEC-1@2026-10-20-0800-LT11@2026-2027@1
 _ROOM_ID_RE = re.compile(
-    r"^[A-Z0-9]+-LEC-[A-Za-z0-9.]+@\d{4}-\d{2}-\d{2}-\d{4}-[\w.-]+@\d{4}-\d{4}@[1-4]$"
+    r"^[A-Z0-9]+-LEC-[A-Za-z0-9.]+@\d{4}-\d{2}-\d{2}-\d{4}-[\w./-]+@\d{4}-\d{4}@[1-4]$"
 )
 
 
@@ -18,6 +19,18 @@ def _validate_room_id(value: str) -> str:
             "room_id must be <moduleCode>-LEC-<classNo>@<YYYY-MM-DD>-<HHMM>-<venue>"
             "@<acadYear>@<semester>"
         )
+    occurrence, academic_year = value.split("@")[1:3]
+    try:
+        date.fromisoformat(occurrence[:10])
+        clock = occurrence[11:15]
+        time(int(clock[:2]), int(clock[2:]))
+        start, end = map(int, academic_year.split("-"))
+        if start < 1 or end != start + 1:
+            raise ValueError
+    except ValueError:
+        raise ValueError(
+            "room_id contains an invalid date, time or academic year"
+        ) from None
     return value
 
 

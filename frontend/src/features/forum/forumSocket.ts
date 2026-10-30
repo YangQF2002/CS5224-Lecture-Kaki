@@ -1,6 +1,6 @@
-import { SignInRequired } from './auth.ts'
 import {
   ForumApiError,
+  needsSignIn,
   getConnectionTicket,
   forumSocketUrl,
   type MessageOut,
@@ -28,8 +28,7 @@ export function subscribeToRoom(
   let stopped = false
   let socket: WebSocket | undefined
   let retry: ReturnType<typeof setTimeout> | undefined
-  let rotate: ReturnType<typeof setTimeout> | undefined
-  let ping: ReturnType<typeof setInterval> | undefined
+  let clearConnectionTimers = () => {}
   let failures = 0
 
   function reconnect(status: LiveStatus = 'reconnecting') {
@@ -75,6 +74,14 @@ export function subscribeToRoom(
           /* Ignore malformed events; stored history remains authoritative. */
         }
       }
+      let rotate: ReturnType<typeof setTimeout> | undefined
+      let ping: ReturnType<typeof setInterval> | undefined
+      const clearTimers = () => {
+        clearTimeout(rotate)
+        clearInterval(ping)
+      }
+      clearConnectionTimers()
+      clearConnectionTimers = clearTimers
       current.onopen = () => {
         if (stopped || socket !== current) return
         void handlers
@@ -93,10 +100,7 @@ export function subscribeToRoom(
           })
           .catch((error: unknown) => {
             if (stopped || socket !== current) return
-            if (
-              error instanceof SignInRequired ||
-              (error instanceof ForumApiError && error.status === 401)
-            ) {
+            if (needsSignIn(error)) {
               stopped = true
               handlers.onUnauthorized()
             }
@@ -118,17 +122,12 @@ export function subscribeToRoom(
         current.close()
       }
       current.onclose = () => {
-        if (socket !== current) return
-        clearTimeout(rotate)
-        clearInterval(ping)
-        reconnect()
+        clearTimers()
+        if (socket === current) reconnect()
       }
     } catch (error) {
       if (stopped) return
-      if (
-        error instanceof SignInRequired ||
-        (error instanceof ForumApiError && error.status === 401)
-      ) {
+      if (needsSignIn(error)) {
         stopped = true
         handlers.onUnauthorized()
       } else if (error instanceof ForumApiError && error.status === 503) {
@@ -142,8 +141,7 @@ export function subscribeToRoom(
   return () => {
     stopped = true
     clearTimeout(retry)
-    clearTimeout(rotate)
-    clearInterval(ping)
+    clearConnectionTimers()
     if (socket) {
       socket.onopen = null
       socket.onmessage = null

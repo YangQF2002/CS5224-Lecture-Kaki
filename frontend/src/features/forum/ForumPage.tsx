@@ -1,11 +1,19 @@
-import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router'
-import { getAccessToken, SignInRequired, signOut, startSignIn } from './auth.ts'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Link, useParams } from 'react-router'
+import {
+  confirmSignedIn,
+  getAccessToken,
+  signOut,
+  startSignIn,
+  subscribeToSignOut,
+  tryAutomaticSignIn,
+} from './auth.ts'
 import {
   deleteMessage,
   ForumApiError,
   getCurrentUser,
   getMessages,
+  needsSignIn,
   postMessage,
   type MessageOut,
 } from './forumApi.ts'
@@ -14,6 +22,21 @@ import {
   type LiveStatus,
   type RoomEvent,
 } from './forumSocket.ts'
+import {
+  lectureDate,
+  lectureTime,
+  resolveRoom,
+  RoomNotFound,
+  roomPath,
+  type LectureRoom,
+} from './roomCatalogue.ts'
+import {
+  clearRoomSession,
+  forgetRoom,
+  readDraft,
+  rememberRoom,
+  saveDraft,
+} from './roomSession.ts'
 import './forum.css'
 
 const MAX_CONTENT = 500
@@ -34,50 +57,110 @@ function mergeMessages(
     .sort((a, b) => a.message_id.localeCompare(b.message_id))
 }
 
-function needsSignIn(error: unknown): boolean {
+function DiscussionHeading({ room }: { room: LectureRoom }) {
+  const { session } = room
   return (
-    error instanceof SignInRequired ||
-    (error instanceof ForumApiError && error.status === 401)
+    <>
+      <p>
+        <Link to="/forum?browse=1">Choose another lecture</Link>
+      </p>
+      <header>
+        <h1>{session.moduleCode} discussion</h1>
+        <p>{session.moduleTitle}</p>
+        <p>
+          {lectureDate(session.date)} · {lectureTime(session.startTime)}–
+          {lectureTime(session.endTime)} · {session.venue}
+        </p>
+      </header>
+    </>
   )
 }
 
-function RoomDiscussion({ roomId }: { roomId: string }) {
+function RoomDiscussion({ room }: { room: LectureRoom }) {
+  const roomId = room.id
   const [messages, setMessages] = useState<MessageOut[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [unauthenticated, setUnauthenticated] = useState(false)
+  const [restoringSignIn, setRestoringSignIn] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [loading, setLoading] = useState(true)
   const [retryCount, setRetryCount] = useState(0)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [sendError, setSendError] = useState('')
-  const [content, setContent] = useState('')
+  const [content, setContent] = useState(() => readDraft(roomId))
+  const [shareStatus, setShareStatus] = useState('')
   const [sending, setSending] = useState(false)
   const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting')
   const bottomRef = useRef<HTMLDivElement>(null)
   const sendingRef = useRef(false)
   const deletedIds = useRef(new Set<string>())
   const historyVersion = useRef(0)
+  const interactionVersion = useRef(0)
+  const pendingHistory = useRef(new Set<Map<string, MessageOut>>())
+  const characterCount = Array.from(content).length
+  const composerDisabled =
+    sending || loading || !!loadError || unauthenticated || !currentUserId
+  const canSend =
+    !composerDisabled && !!content.trim() && characterCount <= MAX_CONTENT
+  const discussionLink = `${location.origin}${roomPath(roomId)}`
+
+  useEffect(
+    () => () => {
+      interactionVersion.current += 1
+    },
+    [],
+  )
 
   useEffect(() => {
     let cancelled = false
+    const signInController = new AbortController()
     let stopSocket: (() => void) | undefined
+    const stopSignOut = subscribeToSignOut(() => {
+      cancelled = true
+      signInController.abort()
+      historyVersion.current += 1
+      interactionVersion.current += 1
+      clearRoomSession()
+      setSendError('')
+      setContent('')
+      stopSocket?.()
+      setMessages([])
+      setCurrentUserId(null)
+      setUnauthenticated(true)
+      setRestoringSignIn(false)
+      setLoading(false)
+    })
     async function refreshHistory() {
       const version = ++historyVersion.current
-      const page = await getMessages(roomId, getAccessToken)
-      if (!cancelled && version === historyVersion.current) {
-        setMessages(mergeMessages(deletedIds.current, page.items))
-        setNextCursor(page.next_cursor)
-        setLoadError('')
+      // A history read can finish after a newer socket event or POST response.
+      const arrived = new Map<string, MessageOut>()
+      pendingHistory.current.add(arrived)
+      try {
+        const page = await getMessages(roomId, getAccessToken)
+        if (!cancelled && version === historyVersion.current) {
+          setMessages(
+            mergeMessages(deletedIds.current, page.items, [
+              ...arrived.values(),
+            ]),
+          )
+          setNextCursor(page.next_cursor)
+          setLoadError('')
+          setLoadingOlder(false)
+        }
+      } finally {
+        pendingHistory.current.delete(arrived)
       }
     }
     function onEvent(event: RoomEvent) {
       if (cancelled) return
-      if (event.type === 'message.created')
+      if (event.type === 'message.created') {
+        for (const arrived of pendingHistory.current)
+          arrived.set(event.message.message_id, event.message)
         setMessages((previous) =>
           mergeMessages(deletedIds.current, previous, [event.message]),
         )
-      else {
+      } else {
         deletedIds.current.add(event.message_id)
         setMessages((previous) =>
           previous.filter((message) => message.message_id !== event.message_id),
@@ -91,6 +174,7 @@ function RoomDiscussion({ roomId }: { roomId: string }) {
           refreshHistory(),
         ])
         if (cancelled) return
+        confirmSignedIn()
         setCurrentUserId(user.user_id)
         setUnauthenticated(false)
         stopSocket = subscribeToRoom(roomId, getAccessToken, {
@@ -105,9 +189,29 @@ function RoomDiscussion({ roomId }: { roomId: string }) {
         })
       } catch (error) {
         if (cancelled) return
+        // Discard a sibling history request that outlives this failed load.
+        historyVersion.current += 1
         setLiveStatus('unavailable')
-        if (needsSignIn(error)) setUnauthenticated(true)
-        else
+        if (needsSignIn(error)) {
+          setUnauthenticated(true)
+          setRestoringSignIn(true)
+          try {
+            const started = await tryAutomaticSignIn(
+              roomPath(roomId),
+              signInController.signal,
+            )
+            if (!cancelled) setRestoringSignIn(started)
+          } catch (reason) {
+            if (!cancelled) {
+              setRestoringSignIn(false)
+              setSendError(
+                reason instanceof Error
+                  ? reason.message
+                  : 'Unable to restore sign-in.',
+              )
+            }
+          }
+        } else
           setLoadError(
             error instanceof ForumApiError && error.status === 422
               ? 'This room ID is invalid. Check the lecture link.'
@@ -118,22 +222,29 @@ function RoomDiscussion({ roomId }: { roomId: string }) {
       }
     }
     void init()
-    // Local expiry cleanup only: this does not poll the API.
-    const expiry = setInterval(
-      () =>
-        setMessages((previous) => mergeMessages(deletedIds.current, previous)),
-      15_000,
-    )
     return () => {
       cancelled = true
+      historyVersion.current += 1
+      signInController.abort()
+      stopSignOut()
       stopSocket?.()
-      clearInterval(expiry)
     }
   }, [roomId, retryCount])
 
+  // Schedule local removal at the next message expiry; no API polling.
   useEffect(() => {
-    if (!loading) bottomRef.current?.scrollIntoView?.()
-  }, [loading])
+    const nextExpiry = Math.min(
+      ...messages.map((message) => Date.parse(message.expires_at)),
+    )
+    if (!Number.isFinite(nextExpiry)) return
+    const timer = setTimeout(
+      () => {
+        setMessages((previous) => mergeMessages(deletedIds.current, previous))
+      },
+      Math.max(0, nextExpiry - Date.now()),
+    )
+    return () => clearTimeout(timer)
+  }, [messages])
 
   async function loadOlder() {
     if (!nextCursor || loadingOlder) return
@@ -152,24 +263,32 @@ function RoomDiscussion({ roomId }: { roomId: string }) {
       if (needsSignIn(error)) setUnauthenticated(true)
       else setSendError('Unable to load older messages. Try again.')
     } finally {
-      setLoadingOlder(false)
+      if (version === historyVersion.current) setLoadingOlder(false)
     }
   }
 
   async function handleSend() {
-    if (!content.trim() || content.length > MAX_CONTENT || sendingRef.current)
-      return
+    if (!canSend || sendingRef.current) return
+    const version = interactionVersion.current
     sendingRef.current = true
     setSending(true)
     setSendError('')
     try {
       const message = await postMessage(roomId, content.trim(), getAccessToken)
+      if (version !== interactionVersion.current) return
+      for (const arrived of pendingHistory.current)
+        arrived.set(message.message_id, message)
       setMessages((previous) =>
         mergeMessages(deletedIds.current, previous, [message]),
       )
+      if (readDraft(roomId) === content) saveDraft(roomId, '')
       setContent('')
-      bottomRef.current?.scrollIntoView?.({ behavior: 'smooth' })
+      bottomRef.current?.scrollIntoView?.({
+        behavior: 'smooth',
+        block: 'nearest',
+      })
     } catch (error) {
+      if (version !== interactionVersion.current) return
       if (needsSignIn(error)) setUnauthenticated(true)
       else setSendError('Failed to send. Your draft is kept; please try again.')
     } finally {
@@ -179,13 +298,16 @@ function RoomDiscussion({ roomId }: { roomId: string }) {
   }
 
   async function handleDelete(messageId: string) {
+    const version = interactionVersion.current
     try {
       await deleteMessage(roomId, messageId, getAccessToken)
+      if (version !== interactionVersion.current) return
       deletedIds.current.add(messageId)
       setMessages((previous) =>
         previous.filter((message) => message.message_id !== messageId),
       )
     } catch (error) {
+      if (version !== interactionVersion.current) return
       if (needsSignIn(error)) setUnauthenticated(true)
       else if (error instanceof ForumApiError && error.status === 404) {
         deletedIds.current.add(messageId)
@@ -203,9 +325,19 @@ function RoomDiscussion({ roomId }: { roomId: string }) {
     setRetryCount((value) => value + 1)
   }
 
+  async function copyLink() {
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard unavailable')
+      await navigator.clipboard.writeText(discussionLink)
+      setShareStatus('copied')
+    } catch {
+      setShareStatus('manual')
+    }
+  }
+
   async function login() {
     try {
-      await startSignIn(`/forum/${encodeURIComponent(roomId)}`)
+      await startSignIn(roomPath(roomId))
     } catch (error) {
       setSendError(
         error instanceof Error ? error.message : 'Unable to start sign-in.',
@@ -216,19 +348,40 @@ function RoomDiscussion({ roomId }: { roomId: string }) {
   if (unauthenticated)
     return (
       <main className="forum-page">
-        <h1>Lecture discussion</h1>
-        <p>Sign in to view and post in this discussion.</p>
-        <button onClick={() => void login()}>Sign in with NUS email</button>
+        <DiscussionHeading room={room} />
+        <p role={restoringSignIn ? 'status' : undefined}>
+          {restoringSignIn
+            ? 'Restoring sign-in with Cognito…'
+            : 'Sign in to view and post in this discussion.'}
+        </p>
+        <button onClick={() => void login()} disabled={restoringSignIn}>
+          Sign in with NUS email
+        </button>
         {sendError && <p role="alert">{sendError}</p>}
       </main>
     )
 
   return (
     <main className="forum-page">
-      <header>
-        <h1>Lecture discussion</h1>
-        <p className="room-id">{roomId}</p>
-      </header>
+      <DiscussionHeading room={room} />
+      <div className="forum-share">
+        <button className="secondary" onClick={() => void copyLink()}>
+          Copy discussion link
+        </button>
+        {shareStatus === 'copied' && (
+          <span role="status">Discussion link copied.</span>
+        )}
+        {shareStatus === 'manual' && (
+          <label>
+            Copy this discussion link
+            <input
+              readOnly
+              value={discussionLink}
+              onFocus={(event) => event.currentTarget.select()}
+            />
+          </label>
+        )}
+      </div>
       <div className="forum-actions">
         <span role="status">
           {liveStatus === 'connected'
@@ -315,32 +468,31 @@ function RoomDiscussion({ roomId }: { roomId: string }) {
           placeholder="Write a message…"
           onChange={(event) => {
             setContent(event.target.value)
+            saveDraft(roomId, event.target.value)
             setSendError('')
           }}
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            if (
+              !event.nativeEvent.isComposing &&
+              event.key === 'Enter' &&
+              (event.metaKey || event.ctrlKey)
+            ) {
               event.preventDefault()
               void handleSend()
             }
           }}
-          disabled={sending || loading || !!loadError}
+          disabled={composerDisabled}
         />
+        <p className="forum-compose-hint">
+          Ctrl/Cmd + Enter to send. Your unsent draft stays in this tab.
+        </p>
         <div className="composer-footer">
           <span
-            className={`char-count${content.length > MAX_CONTENT ? ' over' : ''}`}
+            className={`char-count${characterCount > MAX_CONTENT ? ' over' : ''}`}
           >
-            {content.length}/{MAX_CONTENT}
+            {characterCount}/{MAX_CONTENT}
           </span>
-          <button
-            onClick={() => void handleSend()}
-            disabled={
-              sending ||
-              loading ||
-              !!loadError ||
-              !content.trim() ||
-              content.length > MAX_CONTENT
-            }
-          >
+          <button onClick={() => void handleSend()} disabled={!canSend}>
             {sending ? 'Sending…' : 'Send'}
           </button>
         </div>
@@ -350,11 +502,70 @@ function RoomDiscussion({ roomId }: { roomId: string }) {
   )
 }
 
+function ValidatedDiscussion({ roomId }: { roomId: string }) {
+  const [room, setRoom] = useState<LectureRoom | null>(null)
+  const [error, setError] = useState('')
+  const [retry, setRetry] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    resolveRoom(roomId).then(
+      (result) => {
+        if (!cancelled) {
+          rememberRoom(result.id)
+          setRoom(result)
+        }
+      },
+      (reason: unknown) => {
+        if (cancelled) return
+        if (reason instanceof RoomNotFound) forgetRoom(roomId)
+        setError(
+          reason instanceof RoomNotFound
+            ? reason.message
+            : 'We couldn’t load the lecture details. Please try again.',
+        )
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [roomId, retry])
+  if (room) return <RoomDiscussion room={room} />
+  return (
+    <main className="forum-page">
+      <h1>{error ? 'Discussion unavailable' : 'Opening discussion'}</h1>
+      {error ? (
+        <>
+          <p role="alert">{error}</p>
+          <p>
+            <Link to="/forum?browse=1">Choose a lecture</Link>
+          </p>
+          <button
+            className="secondary"
+            onClick={() => {
+              setError('')
+              setRetry((value) => value + 1)
+            }}
+          >
+            Retry
+          </button>
+        </>
+      ) : (
+        <p role="status">Checking lecture details…</p>
+      )}
+    </main>
+  )
+}
+
 export default function ForumPage() {
   const { roomId } = useParams<{ roomId: string }>()
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+  }, [roomId])
   return roomId ? (
-    <RoomDiscussion key={roomId} roomId={roomId} />
+    <ValidatedDiscussion key={roomId} roomId={roomId} />
   ) : (
-    <p>Select a lecture room.</p>
+    <main className="forum-page">
+      <Link to="/forum?browse=1">Choose a lecture</Link>
+    </main>
   )
 }

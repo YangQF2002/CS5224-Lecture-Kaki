@@ -104,11 +104,24 @@ def collect_page(
 
     while len(collected) < limit and not exhausted:
         remaining = limit - len(collected)
-        response = repository.query_messages(room_id, remaining, last_key, table=table)
-        for item in response.get("Items", []):
+        # On retries caused by expired items, fetch larger batches to avoid
+        # spinning. First pass uses exactly `remaining` to preserve cursor semantics.
+        batch = (
+            remaining
+            if len(collected) == 0 and last_key == start_key
+            else min(remaining * 4, 1000)
+        )
+        response = repository.query_messages(room_id, batch, last_key, table=table)
+        items = response.get("Items", [])
+        last_key = response.get("LastEvaluatedKey")
+        for index, item in enumerate(items):
             if not is_expired(item):
                 collected.append(item_to_message(item))
-        last_key = response.get("LastEvaluatedKey")
+            if len(collected) == limit:
+                if index + 1 < len(items):
+                    # Resume after the last returned record, not the larger batch.
+                    last_key = {"PK": item["PK"], "SK": item["SK"]}
+                break
         if not last_key:
             exhausted = True
 

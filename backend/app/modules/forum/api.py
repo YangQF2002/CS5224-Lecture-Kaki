@@ -35,7 +35,7 @@ router = APIRouter(prefix="/rooms", tags=["Forum"])
 _Auth = Annotated[CurrentUser, Depends(get_current_user)]
 
 
-@router.post("/{room_id}/messages", status_code=201)
+@router.post("/{room_id:path}/messages", status_code=201)
 async def post_message(
     room_id: RoomId,
     body: MessageIn,
@@ -50,7 +50,7 @@ async def post_message(
     return message
 
 
-@router.post("/{room_id}/connection-ticket", status_code=201)
+@router.post("/{room_id:path}/connection-ticket", status_code=201)
 def connection_ticket(
     room_id: RoomId, user: _Auth, request: Request
 ) -> ConnectionTicket:
@@ -63,7 +63,7 @@ def connection_ticket(
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
-@router.get("/{room_id}/messages")
+@router.get("/{room_id:path}/messages")
 def get_messages(
     room_id: RoomId,
     user: _Auth,
@@ -81,7 +81,7 @@ def get_messages(
     return MessagePage(items=items, next_cursor=next_cursor)
 
 
-@router.delete("/{room_id}/messages/{message_id}", status_code=204)
+@router.delete("/{room_id:path}/messages/{message_id}", status_code=204)
 async def delete_message(
     room_id: RoomId,
     message_id: str,
@@ -109,7 +109,7 @@ async def delete_message(
     )
 
 
-@router.websocket("/{room_id}/live")
+@router.websocket("/{room_id:path}/live")
 async def live_messages(websocket: WebSocket, room_id: RoomId, ticket: str = ""):
     origin = websocket.headers.get("origin")
     if origin and origin.rstrip("/") not in frontend_origins():
@@ -130,7 +130,7 @@ async def live_messages(websocket: WebSocket, room_id: RoomId, ticket: str = "")
                 # The socket delivers events; posting and deletion stay authenticated HTTP operations.
                 try:
                     payload = json.loads(await websocket.receive_text())
-                except json.JSONDecodeError, KeyError:
+                except (json.JSONDecodeError, KeyError):
                     await websocket.close(code=1008)
                     break
                 if payload != {"action": "ping"}:

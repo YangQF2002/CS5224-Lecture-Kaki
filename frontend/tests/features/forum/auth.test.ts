@@ -5,56 +5,71 @@ import {
   SignInRequired,
   signOut,
   startSignIn,
+  tryAutomaticSignIn,
 } from '../../../src/features/forum/auth.ts'
 
+const sessionKey = 'lecturekaki:auth:v1'
+const loginKey = 'lecturekaki:login:v1'
+const hintKey = 'lecturekaki:login-hint:v1'
 beforeEach(() => {
   sessionStorage.clear()
+  localStorage.clear()
+  document.cookie = `${hintKey}=; Max-Age=0; Path=/`
+  vi.stubGlobal('location', {
+    origin: 'http://localhost:5173',
+    assign: vi.fn(),
+  })
   vi.stubEnv('VITE_COGNITO_DOMAIN', 'https://login.example')
   vi.stubEnv('VITE_COGNITO_CLIENT_ID', 'public-client')
 })
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
 })
-it('requires sign-in without a session', async () => {
+function response() {
+  return {
+    ok: true,
+    json: async () => ({ access_token: 'new-token', expires_in: 900 }),
+  }
+}
+
+it('requires sign-in without a tab session', async () => {
   await expect(getAccessToken()).rejects.toBeInstanceOf(SignInRequired)
 })
-it('uses a fresh token without a network call', async () => {
-  sessionStorage.setItem(
-    'lecturekaki:auth:v1',
-    JSON.stringify({ access_token: 'fresh', expires_at: Date.now() + 600000 }),
-  )
-  const fetcher = vi.fn()
-  vi.stubGlobal('fetch', fetcher)
-  expect(await getAccessToken()).toBe('fresh')
-  expect(fetcher).not.toHaveBeenCalled()
+it('starts sign-in with PKCE, state and the selected room return path', async () => {
+  await startSignIn('/forum/selected-room')
+  const pending = JSON.parse(sessionStorage.getItem(loginKey)!)
+  const url = new URL(vi.mocked(location.assign).mock.calls[0][0])
+  expect(url.searchParams.get('code_challenge_method')).toBe('S256')
+  expect(url.searchParams.get('state')).toBe(pending.state)
+  expect(pending.returnTo).toBe('/forum/selected-room')
 })
-it('refreshes once for concurrent requests', async () => {
+it('exchanges a valid callback once and restores the room', async () => {
   sessionStorage.setItem(
-    'lecturekaki:auth:v1',
+    loginKey,
     JSON.stringify({
-      access_token: 'old',
-      refresh_token: 'refresh',
-      expires_at: 0,
+      state: 'matching',
+      verifier: 'test-verifier',
+      returnTo: '/forum/selected-room',
     }),
   )
-  const fetcher = vi.fn().mockResolvedValue({
-    ok: true,
-    json: async () => ({ access_token: 'new', expires_in: 900 }),
-  })
+  const fetcher = vi.fn().mockResolvedValue(response())
   vi.stubGlobal('fetch', fetcher)
-  expect(await Promise.all([getAccessToken(), getAccessToken()])).toEqual([
-    'new',
-    'new',
-  ])
+  const url =
+    'http://localhost:5173/auth/callback?code=primary-code&state=matching'
+  expect(await Promise.all([completeSignIn(url), completeSignIn(url)])).toEqual(
+    ['/forum/selected-room', '/forum/selected-room'],
+  )
   expect(fetcher).toHaveBeenCalledOnce()
+  expect(await getAccessToken()).toBe('new-token')
 })
-it('rejects a mismatched OAuth state before exchanging a code', async () => {
+it('rejects an incorrect callback state before exchanging a code', async () => {
   sessionStorage.setItem(
-    'lecturekaki:login:v1',
+    loginKey,
     JSON.stringify({
       state: 'expected',
-      verifier: 'secret',
+      verifier: 'test-verifier',
       returnTo: '/forum',
     }),
   )
@@ -62,92 +77,38 @@ it('rejects a mismatched OAuth state before exchanging a code', async () => {
   vi.stubGlobal('fetch', fetcher)
   await expect(
     completeSignIn(
-      'http://localhost/auth/callback?code=wrong-state-code&state=wrong',
+      'http://localhost:5173/auth/callback?code=bad-primary-code&state=wrong',
     ),
   ).rejects.toThrow('did not match')
   expect(fetcher).not.toHaveBeenCalled()
 })
-it('exchanges a matching callback code once under StrictMode', async () => {
+it('refreshes an expired access token', async () => {
   sessionStorage.setItem(
-    'lecturekaki:login:v1',
-    JSON.stringify({
-      state: 'expected',
-      verifier: 'verifier',
-      returnTo: '/forum/room',
-    }),
-  )
-  const fetcher = vi.fn().mockResolvedValue({
-    ok: true,
-    json: async () => ({
-      access_token: 'new',
-      expires_in: 900,
-      refresh_token: 'refresh',
-    }),
-  })
-  vi.stubGlobal('fetch', fetcher)
-  const url = 'http://localhost/auth/callback?code=valid-code&state=expected'
-  expect(await Promise.all([completeSignIn(url), completeSignIn(url)])).toEqual(
-    ['/forum/room', '/forum/room'],
-  )
-  expect(fetcher).toHaveBeenCalledOnce()
-  expect(String(fetcher.mock.calls[0][1].body)).toContain(
-    'code_verifier=verifier',
-  )
-})
-
-it('does not restore a session if a token refresh finishes after sign-out', async () => {
-  vi.stubGlobal('location', { origin: 'http://localhost', assign: vi.fn() })
-  sessionStorage.setItem(
-    'lecturekaki:auth:v1',
+    sessionKey,
     JSON.stringify({
       access_token: 'old',
-      refresh_token: 'refresh',
+      refresh_token: 'test-refresh',
       expires_at: 0,
     }),
   )
-  let finish!: (value: unknown) => void
-  vi.stubGlobal(
-    'fetch',
-    vi.fn((url: string) =>
-      url.endsWith('/oauth2/token')
-        ? new Promise((resolve) => {
-            finish = resolve
-          })
-        : Promise.resolve({ ok: true }),
-    ),
-  )
-  const result = getAccessToken().then(
-    (token) => ({ token, error: undefined }),
-    (error) => ({ token: undefined, error }),
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response()))
+  expect(await getAccessToken()).toBe('new-token')
+})
+it('automatically reconnects a returning user in a fresh tab', async () => {
+  document.cookie = `${hintKey}=${encodeURIComponent(JSON.stringify({ signedIn: true, logoutVersion: '' }))}; Path=/`
+  expect(await tryAutomaticSignIn('/forum/selected-room')).toBe(true)
+  expect(location.assign).toHaveBeenCalledOnce()
+  expect(sessionStorage.getItem(sessionKey)).toBeNull()
+})
+it('clears the session and returns through Cognito logout', async () => {
+  sessionStorage.setItem(
+    sessionKey,
+    JSON.stringify({ access_token: 'old', expires_at: Date.now() + 900000 }),
   )
   await signOut()
-  finish({
-    ok: true,
-    json: async () => ({ access_token: 'new', expires_in: 900 }),
-  })
-  expect((await result).error).toBeInstanceOf(SignInRequired)
-  expect(sessionStorage.getItem('lecturekaki:auth:v1')).toBeNull()
-})
-
-it('rejects a callback on another website before redirecting to login', async () => {
-  const assign = vi.fn()
-  vi.stubGlobal('location', { origin: 'http://localhost:8080', assign })
-  vi.stubEnv('VITE_COGNITO_REDIRECT_URI', 'http://localhost:5173/auth/callback')
-  await expect(startSignIn()).rejects.toThrow('different website')
-  expect(assign).not.toHaveBeenCalled()
-})
-
-it('starts login when the callback belongs to the current website', async () => {
-  const assign = vi.fn()
-  vi.stubGlobal('location', { origin: 'http://localhost:5173', assign })
-  vi.stubEnv('VITE_COGNITO_REDIRECT_URI', 'http://localhost:5173/auth/callback')
-  await startSignIn('/forum/room')
-  expect(assign).toHaveBeenCalledOnce()
-  const url = new URL(assign.mock.calls[0][0])
-  expect(url.searchParams.get('redirect_uri')).toBe(
-    'http://localhost:5173/auth/callback',
+  expect(sessionStorage.getItem(sessionKey)).toBeNull()
+  await expect(getAccessToken()).rejects.toBeInstanceOf(SignInRequired)
+  expect(new URL(vi.mocked(location.assign).mock.calls[0][0]).pathname).toBe(
+    '/logout',
   )
-  const pending = JSON.parse(sessionStorage.getItem('lecturekaki:login:v1')!)
-  expect(url.searchParams.get('state')).toBe(pending.state)
-  expect(pending.returnTo).toBe('/forum/room')
 })

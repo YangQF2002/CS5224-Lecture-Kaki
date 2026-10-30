@@ -1,8 +1,14 @@
 # Forum
 
-Students open `/forum`, enter a room ID, sign in with Cognito, and post messages
-of up to 500 characters. Only the author can delete a message. Messages disappear
-after 24 hours.
+Students open `/forum`, find a lecture by module, week or venue, and join its
+discussion after signing in with Cognito. Messages have a 500-character limit,
+can be deleted by their author, and disappear after 24 hours. Students share the
+discussion link rather than constructing room IDs.
+
+Returning to Forum restores the last Forum screen: either the lecture picker
+with its search and week, or the selected discussion. **Choose another lecture**
+opens the picker. The selected room and unsent drafts stay in that browser tab
+until sign-out; **Copy discussion link** lets classmates join the same room.
 
 ## Local development
 
@@ -108,14 +114,40 @@ $env:AWS_PROFILE = 'lecturekaki-dev'
 Then start the API from `backend/` on either platform:
 
 ```sh
-poetry run uvicorn app.main:app --reload --host localhost --port 8000 --env-file .env.local
+poetry run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --env-file .env.local
 ```
 
 Keep this terminal running. Open <http://localhost:8000/health>; expect
 `{"status":"ok"}`. API docs are at <http://localhost:8000/docs>. Health can succeed
 without database access; the message test below checks the complete feature.
 
-### 4. Configure and start the frontend
+### 4. Prepare lecture data
+
+The picker and discussion links use the same published lecture JSON as Discover.
+If local data is missing, generate it from `backend/` using public NUSMods data
+and simulated S3, without AWS access:
+
+```sh
+poetry run python scripts/ingest_local.py
+```
+
+In a separate terminal, serve that output from `backend/` and keep it running:
+
+```sh
+poetry run python -m http.server 8001 --bind 127.0.0.1 --directory out/ingest
+```
+
+Vite proxies `/lectures` to port 8001. The Docker frontend serves the generated
+files directly. For an existing hosted catalogue, use `LECTURES_ORIGIN` as
+explained in [lecture data setup](lecture-data.md#local-development).
+
+The default week follows today's Singapore date within the published calendar,
+including recess. The semester comes from `lectures/current.json`; after a new
+term is ingested, reopening the picker uses that term. Local data does not update
+by itself: rerun ingestion for the new term. The shared calendar currently covers
+AY2026/27 Semesters 1–2 and must be extended for later academic years.
+
+### 5. Configure and start the frontend
 
 Copy `frontend/.env.example` to `frontend/.env.local` only if it does not already
 exist. Fill in the same public client ID and hosted domain used by the backend:
@@ -128,12 +160,12 @@ VITE_COGNITO_REDIRECT_URI=http://localhost:5173/auth/callback
 VITE_COGNITO_LOGOUT_URI=http://localhost:5173/forum
 ```
 
-In terminal 2, start from the repository root:
+In another terminal, start from the repository root:
 
 ```sh
 cd frontend
 npm ci
-npm run dev -- --host localhost --port 5173 --strictPort
+npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
 Open <http://localhost:5173/forum>. Use `localhost` consistently; `127.0.0.1` is a
@@ -142,35 +174,45 @@ longer need. Changing ports also requires matching origins and registered login
 URLs. Restart Vite after changing its environment file; restart the API after
 changing backend configuration.
 
-Forum works without lecture JSON. To browse Discover too, follow
-[local lecture data setup](lecture-data.md#local-development): generate the files
-with the existing ingestion script and serve them on port 8001 for Vite. Timetable
-uses the public NUSMods API. Neither feature needs source changes to test Forum.
+The development server listens on the local IPv4 interface, but open it using
+`localhost` as shown above so Cognito and CORS match. Discover uses the same
+lecture files; Timetable uses the public NUSMods API. Their source does not need
+changes for Forum.
+
+Returning users with a valid Cognito browser session are redirected through
+Cognito automatically when opening a room in a new tab. Tokens and PKCE state
+stay in `sessionStorage`. A non-secret session cookie remembers the earlier login;
+a separate `localStorage` logout revision coordinates sign-out between tabs. An
+expired Cognito session still requires sign-in. Failed callbacks do not repeatedly
+redirect, and explicit sign-out disables automatic
+re-entry and clears other open Forum tabs. This does not add long-lived tokens.
 
 ## Test the full feature
 
-Use this demo room ID at `/forum`, or share another valid ID:
+Choose a published lecture at `/forum`. The browser checks that shared links
+match an actual session in the current catalogue; invented or outdated IDs do
+not open a discussion. These manual checks use the shared development table.
 
-```text
-FORUMTEST-LEC-DEV1@2026-10-30-1000-LOCAL@2026-2027@1
-```
-
-The demo passes format validation; no matching catalogue entry is required.
-Replace `DEV1` with your own alphanumeric label to avoid mixing unrelated tests.
-This still writes to the shared development table.
-
-1. Open the room, select **Sign in**, and complete Cognito login. Expect to return
-   to that room with **Live updates connected** and either history or an empty room.
-2. In a separate browser profile or private window on the **same laptop**, open
-   the same frontend and room, then sign in as the second user.
+1. Find a module and week, select **Join discussion**, then **Sign in with NUS
+   email** and complete Cognito login. Expect the lecture title, date and venue,
+   **Live updates connected**, and either history or an empty room.
+2. Select **Copy discussion link**. In a separate browser profile or private
+   window on the **same laptop**, open that link and sign in as the second user.
 3. Post a disposable message. Both browsers should see it without refreshing.
    Refresh the page and confirm the message is still present.
 4. Only its author should see **Delete**. Delete your own test message; it should
    disappear in both browsers and stay deleted after refresh. Automated tests
    also verify that the API rejects another user's deletion with `403`.
-5. Open a different room in one browser and confirm messages remain isolated.
-   Blank or over-500-character messages should be blocked. Sign out and confirm
-   that accessing a room requires sign-in again.
+5. Type an unsent draft, visit **My timetable**, then select **Forum**. Expect
+   the same lecture and draft. Select **Choose another lecture** to change rooms;
+   messages must remain isolated. Leave from the picker and return through
+   **Forum**: the lecture list, search and week should be restored.
+6. Open the copied link in a new tab of the signed-in browser. While the Cognito
+   browser session is valid, it should return to the room automatically without
+   another Sign in click. An expired session can show the Cognito login page.
+7. Try a malformed link and one with an invented class number. Both should show a
+   useful error. Blank or over-500-character messages should be blocked. Sign out
+   and confirm other open Forum tabs clear their messages and require sign-in.
 
 Use **one API process for both browsers**. Two developers each running an API
 against the same table share history, but their live events are not broadcast
@@ -190,7 +232,7 @@ First-time dependency installation or image builds still need internet access.
 With Docker, run from the repository root:
 
 ```sh
-docker compose run --build --rm backend-test python -m pytest -p no:cacheprovider tests/test_forum.py
+docker compose run --build --rm backend-test python -m pytest -p no:cacheprovider tests/forum
 docker compose run --build --rm frontend-test npm test -- tests/features/forum
 ```
 
@@ -198,7 +240,7 @@ Without Docker, after the dependency installs above:
 
 ```sh
 # From backend/
-poetry run python -m pytest tests/test_forum.py
+poetry run python -m pytest tests/forum
 ```
 
 ```sh
@@ -221,8 +263,8 @@ see [authentication testing](authentication.md#testing-against-cognito).
 | Sign-in succeeds but Forum returns `503` | Check the backend terminal, table name, region, credentials and the four DynamoDB permissions. A successful health check does not prove table access. |
 | Sign-in repeatedly returns `401` | Confirm both environment files use the same pool's public client and sign in again. |
 | CORS error or live connection fails | Check API availability, `VITE_API_URL`, exact `FRONTEND_ORIGINS`, and that there is one API process. |
-| Room returns `422` | Use the full room ID format below, without a URL prefix or added spaces. |
-| Discover says lecture data is unavailable | Follow the optional lecture data setup above; Forum room entry works independently. |
+| Discussion link is invalid or unavailable | Choose a lecture from the current list or ask for its copied link; the occurrence or term may have changed. |
+| Lecture list or details will not load | Generate the lecture files and keep the port 8001 server running, or check `LECTURES_ORIGIN`. Use Retry after fixing it. |
 
 ## API
 
@@ -238,7 +280,12 @@ Forum HTTP routes require a Cognito access token.
 
 Room IDs combine the unchanged lecture session ID with the academic year and
 semester: `<sessionId>@<acadYear>@<semester>`. See
-[lecture session IDs](lecture-data.md#session-ids). Validation checks only format.
+[lecture session IDs](lecture-data.md#session-ids). Preserve the session ID,
+including leading zeroes and venue slashes. URL-encode the whole room ID when
+building API or browser links. The backend checks format, calendar date, clock
+time and consecutive academic years; it does not look up the catalogue. The
+browser additionally checks an exact session match in the current published
+term before requesting Forum history or opening a socket.
 
 ## Storage and live updates
 

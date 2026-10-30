@@ -15,9 +15,6 @@
 .forum-page a {
   color: #1d4ed8;
 }
-.room-id {
-  overflow-wrap: anywhere;
-}
 .forum-page input {
   min-width: 0;
   width: 100%;
@@ -135,4 +132,77 @@
 
 .char-count.over {
   color: #dc2626;
+}
+
+.forum-browser {
+  max-width: 64rem;
+}
+.forum-term,
+.forum-compose-hint {
+  color: #64748b;
+  font-size: 0.875rem;
+}
+.forum-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+.forum-filters label {
+  min-width: 0;
+}
+.forum-filters select {
+  width: 100%;
+}
+.forum-lecture-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.forum-lecture {
+  margin: 0;
+}
+.forum-lecture h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+.forum-lecture h2 span {
+  font-weight: 400;
+}
+.forum-lecture p {
+  color: #475569;
+  margin: 0.5rem 0;
+}
+.forum-join {
+  display: inline-block;
+  padding: 0.25rem 0;
+}
+.forum-shared-link {
+  margin-top: 1.5rem;
+}
+.forum-shared-link summary {
+  cursor: pointer;
+}
+.forum-shared-link form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.forum-share {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.forum-share label {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.forum-compose-hint {
+  margin: 0;
+}
+@media (max-width: 600px) {
+  .forum-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

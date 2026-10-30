@@ -1,3 +1,5 @@
+import { SignInRequired } from './auth.ts'
+
 const API_BASE = (
   import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 ).replace(/\/$/, '')
@@ -12,6 +14,13 @@ export class ForumApiError extends Error {
     )
     this.status = status
   }
+}
+
+export function needsSignIn(error: unknown): boolean {
+  return (
+    error instanceof SignInRequired ||
+    (error instanceof ForumApiError && error.status === 401)
+  )
 }
 
 export interface MessageOut {
