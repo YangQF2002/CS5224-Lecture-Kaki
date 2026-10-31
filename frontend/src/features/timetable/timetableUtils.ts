@@ -46,12 +46,20 @@ export function expandSelections(
         .filter(
           (lesson) =>
             lesson.lessonType === selection.lessonType &&
-            lesson.classNo === selection.classNo,
+            lesson.classNo === selection.classNo &&
+            (!selection.day || lesson.day === selection.day) &&
+            (!selection.week ||
+              (Array.isArray(lesson.weeks)
+                ? lesson.weeks.includes(selection.week)
+                : (lesson.weeks.weeks?.includes(selection.week) ??
+                  (selection.week - 1) % (lesson.weeks.weekInterval ?? 1) ===
+                    0))),
         )
         .map((lesson) => ({
           ...lesson,
           moduleCode: selection.moduleCode,
           moduleTitle: selection.moduleTitle,
+          selectedWeek: selection.week,
         }))
     })
     .sort((left, right) => {

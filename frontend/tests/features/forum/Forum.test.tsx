@@ -101,6 +101,12 @@ const messageBox = () =>
 function change(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
 }
+async function chooseWeek(label: RegExp) {
+  const trigger = screen.getByRole('combobox', { name: 'Week' })
+  await waitFor(() => expect(trigger.hasAttribute('disabled')).toBe(false))
+  fireEvent.keyDown(trigger, { key: 'ArrowDown', code: 'ArrowDown' })
+  fireEvent.click(await screen.findByRole('option', { name: label }))
+}
 function renderForum(url = roomPath(roomId)) {
   return render(
     <MemoryRouter initialEntries={[url]}>
@@ -167,7 +173,7 @@ it('returns to the selected room and draft after visiting Timetable', async () =
   renderForum()
   await screen.findByLabelText('Your message')
   change('Your message', 'My unsent question')
-  fireEvent.click(screen.getByRole('link', { name: 'My timetable' }))
+  fireEvent.click(screen.getByRole('link', { name: /My timetable/i }))
   await screen.findByRole('heading', { name: 'My timetable' })
   fireEvent.click(screen.getByRole('link', { name: 'Forum' }))
   expect(
@@ -179,15 +185,16 @@ it('returns to the picker with its filters when that was the last Forum screen',
   fireEvent.click(
     await screen.findByRole('link', { name: 'Choose another lecture' }),
   )
-  await screen.findByRole('option', { name: /Week 11/ })
-  change('Week', 'week-11')
+  await chooseWeek(/Week 11/)
   change('Find a lecture', 'CS5224')
   await screen.findByText(laterLecture.moduleTitle)
-  fireEvent.click(screen.getByRole('link', { name: 'My timetable' }))
+  fireEvent.click(screen.getByRole('link', { name: /My timetable/i }))
   await screen.findByRole('heading', { name: 'My timetable' })
   fireEvent.click(screen.getByRole('link', { name: 'Forum' }))
   await screen.findByRole('heading', { name: 'Lecture Forum' })
-  expect(screen.getByLabelText<HTMLSelectElement>('Week').value).toBe('week-11')
+  expect(screen.getByRole('combobox', { name: 'Week' }).textContent).toContain(
+    'Week 11',
+  )
   expect(screen.getByLabelText<HTMLInputElement>('Find a lecture').value).toBe(
     'CS5224',
   )

@@ -50,17 +50,27 @@ export type TimetableSelection = {
   moduleTitle: string
   lessonType: string
   classNo: string
+  day?: Day
+  week?: number
+  source?: 'discover'
 }
 
 export type TimetableLesson = RawLesson & {
   moduleCode: string
   moduleTitle: string
+  selectedWeek?: number
 }
 
 export type TimetableState = {
   academicYear: string
   semester: Semester
   selections: TimetableSelection[]
+  semesterSelections?: Partial<Record<Semester, TimetableSelection[]>>
+}
+
+export type TimetableBook = {
+  academicYear: string
+  semesters: Record<Semester, TimetableSelection[]>
 }
 
 export type ShareLessonReference = {

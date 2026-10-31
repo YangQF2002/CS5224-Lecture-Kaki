@@ -84,6 +84,15 @@ def validate_timetable(timetable: Timetable, nusmods: NusmodsClient) -> Timetabl
         selection_exists = any(
             lesson.get("lessonType") == selection.lesson_type
             and lesson["classNo"] == selection.class_no
+            and (selection.day is None or lesson.get("day") == selection.day)
+            and (
+                selection.week is None
+                or (
+                    isinstance(lesson.get("weeks"), list)
+                    and selection.week in lesson["weeks"]
+                )
+                or isinstance(lesson.get("weeks"), dict)
+            )
             for lesson in lessons
         )
 
@@ -99,6 +108,9 @@ def validate_timetable(timetable: Timetable, nusmods: NusmodsClient) -> Timetabl
                 moduleTitle=module_title,
                 lessonType=selection.lesson_type,
                 classNo=selection.class_no,
+                day=selection.day,
+                week=selection.week,
+                source=selection.source,
             )
         )
 

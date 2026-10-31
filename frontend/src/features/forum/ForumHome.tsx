@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
+import SelectField from '../../SelectField.tsx'
 // prettier-ignore
 import { chooseDefaultWeek, singaporeNow, weekName } from '../discovery/discoveryFilters.ts'
 // prettier-ignore
@@ -9,7 +10,6 @@ import type { LectureSnapshot, WeekSessions } from '../discovery/types.ts'
 import { lectureDate, lectureTime, parseRoomId, roomFromLink, roomIdFor, roomPath } from './roomCatalogue.ts'
 import { lastForumPath, lastRoom, rememberPicker } from './roomSession.ts'
 import './forum.css'
-
 const PAGE_SIZE = 30
 
 function LecturePicker() {
@@ -117,16 +117,16 @@ function LecturePicker() {
           Choose a lecture to join its discussion. Messages disappear after 24
           hours.
         </p>
+        {snapshot && (
+          <p className="forum-term">
+            Academic year {snapshot.pointer.acadYear} · Semester{' '}
+            {snapshot.pointer.semester}
+          </p>
+        )}
       </header>
       {previous && (
         <p>
           <Link to={roomPath(previous)}>Return to your last discussion</Link>
-        </p>
-      )}
-      {snapshot && (
-        <p className="forum-term">
-          Academic year {snapshot.pointer.acadYear} · Semester{' '}
-          {snapshot.pointer.semester}
         </p>
       )}
       <section className="panel forum-filters" aria-label="Find a discussion">
@@ -142,21 +142,24 @@ function LecturePicker() {
         </label>
         <label htmlFor="forum-week">
           Week
-          <select
-            id="forum-week"
-            value={selectedWeek?.week ?? ''}
-            onChange={(event) => update('week', event.target.value)}
+          <SelectField
+            value={selectedWeek?.week ?? 'none'}
+            onValueChange={(value) => update('week', value)}
             disabled={!snapshot?.index.weeks.length}
+            aria-label="Week"
+            options={
+              snapshot?.index.weeks.length
+                ? snapshot.index.weeks.map((week) => ({
+                    value: week.week,
+                    label: `${weekName(week.week)} · ${lectureDate(week.startDate)}`,
+                  }))
+                : [{ value: 'none', label: 'No weeks available' }]
+            }
           >
-            {!snapshot?.index.weeks.length && (
-              <option value="">No weeks available</option>
-            )}
-            {snapshot?.index.weeks.map((week) => (
-              <option key={week.week} value={week.week}>
+            {/*
                 {weekName(week.week)} · {lectureDate(week.startDate)}
-              </option>
-            ))}
-          </select>
+          */}
+          </SelectField>
         </label>
       </section>
       {failed ? (

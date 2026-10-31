@@ -43,7 +43,7 @@ and native WebSocket updates. See [Forum setup](../docs/forum.md) for the table,
 frontend login, local run commands and single-worker deployment limit.
 ## Personal timetables
 
-`/timetable` stores one timetable per authenticated user. PUT validates selections against NUSMods and replaces the saved timetable; concurrent updates use last-write-wins.
+`/timetable` stores the legacy single-semester view. The authenticated `/timetable/semesters` GET and PUT endpoints store all four semester selections together, validate each selection against NUSMods, and use last-write-wins updates.
 
 Deploy from the repository root with the [development AWS profile](../docs/aws-dev-setup.md#1-configure-the-cli-profile):
 

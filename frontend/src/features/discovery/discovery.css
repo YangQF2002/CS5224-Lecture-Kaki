@@ -220,6 +220,18 @@ label.checkbox {
   font-size: 0.9rem;
 }
 
+.session-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
+.add-to-timetable {
+  min-height: 2rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.85rem;
+}
+
 .show-more {
   width: 100%;
   margin-top: 1rem;
