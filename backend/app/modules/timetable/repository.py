@@ -5,7 +5,7 @@ from typing import Any
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from .schemas import Timetable
+from .schemas import Timetable, TimetableBook
 
 
 class TimetableRepositoryUnavailable(Exception):
@@ -43,7 +43,9 @@ class TimetableRepository:
     def save(self, user_id: str, timetable: Timetable) -> Timetable:
         item = {
             "user_id": user_id,
-            "timetable": timetable.model_dump(mode="json", by_alias=True),
+            "timetable": timetable.model_dump(
+                mode="json", by_alias=True, exclude_none=True
+            ),
             "updated_at": datetime.now(UTC).isoformat(),
         }
 
@@ -53,6 +55,67 @@ class TimetableRepository:
             raise TimetableRepositoryUnavailable from None
 
         return timetable
+
+    def get_book(self, user_id: str) -> TimetableBook | None:
+        try:
+            response = self._table.get_item(
+                Key={"user_id": user_id},
+                ConsistentRead=True,
+            )
+        except BotoCoreError, ClientError:
+            raise TimetableRepositoryUnavailable from None
+
+        item = response.get("Item")
+        if not isinstance(item, dict):
+            return None
+
+        stored_book = item.get("timetable_book")
+        if isinstance(stored_book, dict):
+            try:
+                return TimetableBook.model_validate(stored_book)
+            except ValueError:
+                raise TimetableRepositoryUnavailable from None
+
+        # Migrate the original one-semester record when the new endpoint is
+        # used for the first time.
+        stored_timetable = item.get("timetable")
+        if not isinstance(stored_timetable, dict):
+            return None
+        try:
+            timetable = Timetable.model_validate(stored_timetable)
+            return TimetableBook(
+                academicYear=timetable.academic_year,
+                semesters={timetable.semester: timetable.selections},
+            )
+        except ValueError:
+            raise TimetableRepositoryUnavailable from None
+
+    def save_book(self, user_id: str, book: TimetableBook) -> TimetableBook:
+        # Keep a legacy timetable field for older clients. Semester 1 is the
+        # compatibility view; the book remains the source of truth.
+        legacy_semester = 1
+        legacy = Timetable(
+            academicYear=book.academic_year,
+            semester=legacy_semester,
+            selections=book.semesters.get(legacy_semester, []),
+        )
+        item = {
+            "user_id": user_id,
+            "timetable": legacy.model_dump(
+                mode="json", by_alias=True, exclude_none=True
+            ),
+            "timetable_book": book.model_dump(
+                mode="json", by_alias=True, exclude_none=True
+            ),
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+
+        try:
+            self._table.put_item(Item=item)
+        except BotoCoreError, ClientError:
+            raise TimetableRepositoryUnavailable from None
+
+        return book
 
     def delete(self, user_id: str) -> None:
         try:

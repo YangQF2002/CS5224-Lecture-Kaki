@@ -33,8 +33,6 @@
 
 .forum-page header p {
   margin: 0;
-  color: #64748b;
-  font-size: 0.9rem;
 }
 
 .message-list {
@@ -140,7 +138,6 @@
 .forum-term,
 .forum-compose-hint {
   color: #64748b;
-  font-size: 0.875rem;
 }
 .forum-filters {
   display: grid;

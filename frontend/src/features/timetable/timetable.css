@@ -1,11 +1,19 @@
 .timetable-page {
-  max-width: 64rem;
+  max-width: 72rem;
   margin: 2rem auto;
   padding: 0 1.5rem 4rem;
 }
 
 .timetable-page header {
   margin-bottom: 2rem;
+}
+
+.timetable-page header h1 {
+  margin: 0 0 0.25rem;
+}
+
+.timetable-page header p {
+  margin: 0;
 }
 
 .term-controls,
@@ -89,5 +97,344 @@
   .inline-form {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+/* NUSMods-inspired module cards and week grid */
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.section-heading:not(.schedule-heading) {
+  flex-wrap: wrap;
+}
+
+.section-heading:not(.schedule-heading) .module-strip,
+.section-heading:not(.schedule-heading) > p {
+  flex-basis: 100%;
+}
+
+.section-heading h2 {
+  margin-bottom: 0.15rem;
+}
+
+.section-hint {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.86rem;
+}
+
+.module-count {
+  display: inline-grid;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  place-items: center;
+  border-radius: 999px;
+  color: #1e3a8a;
+  background: #dbeafe;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.module-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.module-card {
+  position: relative;
+  display: block;
+  min-width: 0;
+  padding: 0.9rem 2.3rem 0.8rem 1rem;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+  border-radius: 0.65rem;
+  color: #172033;
+}
+
+.module-card::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0.3rem;
+  content: '';
+  background: currentColor;
+  opacity: 0.45;
+}
+
+.module-card .module-code,
+.module-card .module-title,
+.module-card ul {
+  display: block;
+}
+
+.module-card .module-code {
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+}
+
+.module-card .module-title {
+  margin-top: 0.15rem;
+  overflow-wrap: anywhere;
+  color: #475569;
+  font-size: 0.78rem;
+  line-height: 1.25;
+}
+
+.module-card .module-origin {
+  display: block;
+  margin-top: 0.35rem;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-style: italic;
+  font-weight: 700;
+}
+
+.module-card ul {
+  margin: 0.55rem 0 0;
+  padding: 0;
+  color: #334155;
+  font-size: 0.75rem;
+  list-style: none;
+}
+
+.remove-module {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: grid;
+  width: 1.65rem;
+  min-height: 1.65rem;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  color: #475569;
+  background: rgb(255 255 255 / 65%);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.remove-module span {
+  display: grid;
+  width: 1.25rem;
+  height: 1.25rem;
+  place-items: center;
+  font-size: 0;
+  text-align: center;
+}
+
+.remove-module span::after {
+  content: '\00d7';
+  font-size: 1.25rem;
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
+.remove-module:hover:not(:disabled) {
+  color: #991b1b;
+  background: white;
+}
+
+.module-card.rose,
+.lesson-block.rose { background: #d9a0ad; border-color: #c98999; }
+.module-card.terracotta,
+.lesson-block.terracotta { background: #dda58e; border-color: #cf9277; }
+.module-card.apricot,
+.lesson-block.apricot { background: #f0bd8a; border-color: #e3a86d; }
+.module-card.olive,
+.lesson-block.olive { background: #d0cc87; border-color: #b9b66e; }
+.module-card.teal,
+.lesson-block.teal { background: #9bc9ba; border-color: #80b6a5; }
+.module-card.sky,
+.lesson-block.sky { background: #9ebfc9; border-color: #86aeba; }
+.module-card.lavender,
+.lesson-block.lavender { background: #b4a9c9; border-color: #9d8fb8; }
+.module-card.clay,
+.lesson-block.clay { background: #c7a293; border-color: #b18a79; }
+
+.schedule-heading {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.schedule-heading > .schedule-scroll,
+.schedule-heading > p,
+.schedule-heading > .week-navigator {
+  flex-basis: 100%;
+}
+
+.week-navigator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  width: fit-content;
+  margin: 0.25rem auto 0;
+}
+
+.week-navigator button {
+  display: grid;
+  width: 2rem;
+  min-height: 2rem;
+  padding: 0;
+  place-items: center;
+  align-items: center;
+  justify-items: center;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.4rem;
+  color: #1d4ed8;
+  background: #eff6ff;
+  font-size: 1.25rem;
+  line-height: 0;
+}
+
+.week-navigator button span {
+  line-height: 1;
+  transform: translateY(-1px);
+}
+
+.week-navigator button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.week-navigator > span {
+  min-width: 6.5rem;
+  color: #334155;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.schedule-scroll {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  border: 1px solid #334155;
+  border-radius: 0.45rem;
+  background: #1e293b;
+}
+
+.schedule-grid {
+  display: grid;
+  width: max(100%, 59.6rem);
+  grid-template-columns: 3.6rem minmax(0, 1fr);
+  min-width: 59.6rem;
+  color: #cbd5e1;
+  font-size: 0.72rem;
+}
+
+.schedule-corner { border-bottom: 1px solid #475569; }
+
+.schedule-hours {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--schedule-columns), minmax(0, 1fr));
+  min-height: 2.1rem;
+  border-bottom: 1px solid #475569;
+}
+
+.schedule-hours span {
+  padding: 0.55rem 0.35rem 0.4rem;
+  border-left: 1px solid #334155;
+  color: #94a3b8;
+}
+
+.schedule-row { display: contents; }
+
+.day-label {
+  display: flex;
+  min-height: 4.8rem;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #334155;
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+.day-track {
+  position: relative;
+  min-height: 4.8rem;
+  border-bottom: 1px solid #334155;
+  background: #1e293b;
+}
+
+.hour-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #334155;
+}
+
+.hour-line:nth-child(1) { left: 0%; }
+.hour-line:nth-child(2) { left: 8.333%; }
+.hour-line:nth-child(3) { left: 16.666%; }
+.hour-line:nth-child(4) { left: 25%; }
+.hour-line:nth-child(5) { left: 33.333%; }
+.hour-line:nth-child(6) { left: 41.666%; }
+.hour-line:nth-child(7) { left: 50%; }
+.hour-line:nth-child(8) { left: 58.333%; }
+.hour-line:nth-child(9) { left: 66.666%; }
+.hour-line:nth-child(10) { left: 75%; }
+.hour-line:nth-child(11) { left: 83.333%; }
+.hour-line:nth-child(12) { left: 91.666%; }
+.hour-line:nth-child(13) { left: 100%; }
+
+.lesson-block {
+  position: absolute;
+  top: 0.4rem;
+  height: 4rem;
+  z-index: 1;
+  display: flex;
+  min-width: 2.2rem;
+  flex-direction: column;
+  padding: 0.35rem 0.45rem;
+  overflow: hidden;
+  box-sizing: border-box;
+  border-left: 0.25rem solid currentColor;
+  border-radius: 0.2rem;
+  color: #172033;
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+
+.lesson-block strong,
+.lesson-block span,
+.lesson-block small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lesson-block strong { font-size: 0.73rem; }
+.lesson-block small { margin-top: auto; color: #475569; font-size: 0.62rem; }
+
+@media (max-width: 40rem) {
+  .section-heading { align-items: flex-start; }
+
+  .timetable-page {
+    box-sizing: border-box;
+    width: 100%;
+    padding-right: 0.75rem;
+    padding-left: 0.75rem;
+  }
+
+  .panel {
+    overflow: hidden;
+    padding: 1rem;
+  }
+
+  .module-card {
+    padding-right: 2.75rem;
   }
 }

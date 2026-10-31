@@ -55,6 +55,16 @@ select {
   background: #eff6ff;
 }
 
+.app-nav a:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 1px;
+}
+
+.app-brand:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 3px;
+}
+
 .app-nav a.active {
   color: #1d4ed8;
   font-weight: 600;
@@ -89,6 +99,15 @@ button {
   font: inherit;
 }
 
+input:focus,
+select:focus,
+textarea:focus,
+button:focus {
+  border-color: #3b82f6;
+  outline: 2px solid #60a5fa;
+  outline-offset: 1px;
+}
+
 input {
   width: 100%;
 }
@@ -96,6 +115,83 @@ input {
 input[type='checkbox'] {
   width: auto;
   min-height: 0;
+}
+
+.radix-select-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 2.5rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: #1f2937;
+  background: white;
+  border-color: #94a3b8;
+  text-align: left;
+}
+
+.radix-select-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.radix-select-icon {
+  display: flex;
+  align-items: center;
+  color: #64748b;
+}
+
+.radix-select-chevron {
+  display: block;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-0.12rem) rotate(45deg);
+}
+
+.radix-select-content {
+  z-index: 20;
+  min-width: var(--radix-select-trigger-width);
+  max-height: 18rem;
+  overflow: hidden;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.45rem;
+  background: white;
+  box-shadow: 0 10px 25px rgb(15 23 42 / 15%);
+}
+
+.radix-select-viewport {
+  padding: 0.25rem;
+}
+
+.radix-select-item {
+  position: relative;
+  display: flex;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 2rem 0.25rem 0.65rem;
+  border-radius: 0.3rem;
+  color: #1f2937;
+  cursor: pointer;
+  outline: none;
+}
+
+.radix-select-item[data-highlighted] {
+  color: #1e3a8a;
+  background: #dbeafe;
+}
+
+.radix-select-item[data-state='checked'] {
+  color: #1d4ed8;
+  font-weight: 600;
+}
+
+.radix-select-indicator {
+  position: absolute;
+  right: 0.65rem;
+  color: #2563eb;
 }
 
 button {

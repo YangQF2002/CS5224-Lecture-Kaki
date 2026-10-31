@@ -91,23 +91,27 @@ async function chooseModule() {
   await screen.findByRole('combobox', { name: 'Lecture' })
 }
 
+async function chooseOption(label: string, option: string) {
+  fireEvent.keyDown(screen.getByRole('combobox', { name: label }), {
+    key: 'ArrowDown',
+    code: 'ArrowDown',
+  })
+  fireEvent.click(await screen.findByRole('option', { name: option }))
+}
+
 function selectedModules() {
   return within(
-    screen.getByRole('heading', { name: 'Selected modules' }).parentElement!,
+    screen.getByRole('heading', { name: 'Selected modules' }).closest('.panel')!,
   )
 }
 
 it('adds a tutorial without removing the existing lecture', async () => {
   render(<TimetablePage />)
   await chooseModule()
-  fireEvent.change(screen.getByRole('combobox', { name: 'Lecture' }), {
-    target: { value: '1' },
-  })
+  await chooseOption('Lecture', '1')
   fireEvent.click(screen.getByRole('button', { name: 'Add selected groups' }))
   await chooseModule()
-  fireEvent.change(screen.getByRole('combobox', { name: 'Tutorial' }), {
-    target: { value: '01' },
-  })
+  await chooseOption('Tutorial', '01')
   fireEvent.click(screen.getByRole('button', { name: 'Add selected groups' }))
   expect(selectedModules().getByText('Lecture: 1')).toBeTruthy()
   expect(selectedModules().getByText('Tutorial: 01')).toBeTruthy()
@@ -116,9 +120,7 @@ it('adds a tutorial without removing the existing lecture', async () => {
 it('restores an added lesson group after remounting', async () => {
   const page = render(<TimetablePage />)
   await chooseModule()
-  fireEvent.change(screen.getByRole('combobox', { name: 'Lecture' }), {
-    target: { value: '1' },
-  })
+  await chooseOption('Lecture', '1')
   fireEvent.click(screen.getByRole('button', { name: 'Add selected groups' }))
 
   page.unmount()
@@ -149,7 +151,7 @@ it('shows available lessons when a selected module fails and clears the warning 
 
   await screen.findByText('Unable to load timetable for: CS2040.')
   const schedule = within(
-    screen.getByRole('heading', { name: 'Weekly schedule' }).parentElement!,
+    screen.getByRole('heading', { name: 'Weekly schedule' }).closest('.panel')!,
   )
   const lessons = schedule.getAllByRole('article')
   expect(lessons).toHaveLength(1)
@@ -169,12 +171,8 @@ it('shows available lessons when a selected module fails and clears the warning 
 it('clears the picker when the semester changes', async () => {
   render(<TimetablePage />)
   await chooseModule()
-  fireEvent.change(screen.getByRole('combobox', { name: 'Lecture' }), {
-    target: { value: '1' },
-  })
-  fireEvent.change(screen.getByRole('combobox', { name: 'Semester' }), {
-    target: { value: '2' },
-  })
+  await chooseOption('Lecture', '1')
+  await chooseOption('Semester', 'Semester 2')
   expect(
     screen.queryByRole('button', { name: 'Add selected groups' }),
   ).toBeNull()
@@ -195,9 +193,7 @@ it('ignores a module response started before the semester changed', async () => 
   fireEvent.click(
     await screen.findByRole('button', { name: 'CS1010 Synthetic module' }),
   )
-  fireEvent.change(screen.getByRole('combobox', { name: 'Semester' }), {
-    target: { value: '2' },
-  })
+  await chooseOption('Semester', 'Semester 2')
   await act(async () => resolveModule(module))
   expect(
     screen.queryByRole('button', { name: 'Add selected groups' }),
@@ -221,14 +217,11 @@ it('does not overwrite a new term with a delayed import', async () => {
     },
   )
   fireEvent.click(screen.getByRole('button', { name: 'Import' }))
-  fireEvent.change(screen.getByRole('combobox', { name: 'Semester' }), {
-    target: { value: '2' },
-  })
+  await chooseOption('Semester', 'Semester 2')
   await act(async () => resolveModule(module))
   expect(
-    (screen.getByRole('combobox', { name: 'Semester' }) as HTMLSelectElement)
-      .value,
-  ).toBe('2')
+    screen.getByRole('combobox', { name: 'Semester' }).textContent,
+  ).toContain('Semester 2')
   expect(selectedModules().getByText('No modules added yet.')).toBeTruthy()
 })
 

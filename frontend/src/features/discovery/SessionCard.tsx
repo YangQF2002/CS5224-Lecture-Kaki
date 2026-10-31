@@ -3,9 +3,18 @@ import type { LectureModule, LectureSession } from './types.ts'
 type SessionCardProps = {
   session: LectureSession
   module: LectureModule | undefined
+  addedToTimetable: boolean
+  disableAdd: boolean
+  onAddToTimetable: () => void
 }
 
-function SessionCard({ session, module }: SessionCardProps) {
+function SessionCard({
+  session,
+  module,
+  addedToTimetable,
+  disableAdd,
+  onAddToTimetable,
+}: SessionCardProps) {
   const venue = session.online
     ? 'Online'
     : // Venues such as LT11 do not name their building; COM1-0207 does.
@@ -48,6 +57,18 @@ function SessionCard({ session, module }: SessionCardProps) {
             View on NUSMods
           </a>
         </details>
+        {session.lessonType === 'Lecture' && (
+          <div className="session-actions">
+            <button
+              type="button"
+              className="add-to-timetable"
+              disabled={disableAdd}
+              onClick={onAddToTimetable}
+            >
+              {addedToTimetable ? 'Added' : 'Add to timetable'}
+            </button>
+          </div>
+        )}
       </div>
     </article>
   )

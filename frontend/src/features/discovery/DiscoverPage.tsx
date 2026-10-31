@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
+import SelectField from '../../SelectField.tsx'
+import { getAccessToken } from '../forum/auth.ts'
+import { saveRemoteTimetable } from '../timetable/timetableApi.ts'
+import { loadTimetable, saveTimetable } from '../timetable/timetableStorage.ts'
 import {
   DEFAULT_TO,
   OTHER_VENUES,
@@ -18,20 +22,18 @@ import {
 import { fetchLectureSnapshot, fetchWeekSessions } from './lectureApi.ts'
 import MultiSelect, { type MultiSelectOption } from './MultiSelect.tsx'
 import SessionCard from './SessionCard.tsx'
+import type { Semester, TimetableSelection, TimetableState } from '../timetable/types.ts'
 import type { LectureSession, LectureSnapshot, WeekSessions } from './types.ts'
 import './discovery.css'
-
 const PAGE_SIZE = 50
 const SOON_WINDOW_MINUTES = 180
 const MIN_SIZE_OPTIONS = [0, 50, 100, 200, 400]
-
 function formatDate(date: string, options: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat('en-SG', {
     ...options,
     timeZone: 'UTC',
   }).format(new Date(`${date}T00:00:00Z`))
 }
-
 function formatTerm(acadYear: string, semester: number) {
   const [start, end] = acadYear.split('-')
   return `AY${start}/${end.slice(2)} Semester ${semester}`
@@ -63,6 +65,7 @@ function DiscoverPage() {
   const [weekError, setWeekError] = useState({ week: '', message: '' })
   const [today] = useState(() => singaporeNow().date)
   const [shown, setShown] = useState({ key: '', count: PAGE_SIZE })
+  const [timetable, setTimetable] = useState(loadTimetable)
 
   useEffect(() => {
     let cancelled = false
@@ -88,7 +91,6 @@ function DiscoverPage() {
   const selectedWeek =
     weeks.find((week) => week.week === filters.week) ??
     weeks.find((week) => week.week === chooseDefaultWeek(weeks, today))
-
   useEffect(() => {
     if (!snapshot || !selectedWeek) return
     let cancelled = false
@@ -144,6 +146,45 @@ function DiscoverPage() {
     () =>
       new Map(snapshot?.modules.map((module) => [module.moduleCode, module])),
     [snapshot],
+  )
+  const timetableSelections = useMemo(() => {
+    if (!snapshot || timetable.academicYear !== snapshot.pointer.acadYear) {
+      return []
+    }
+    const semester = snapshot.pointer.semester as Semester
+    return semester === timetable.semester
+      ? timetable.selections
+      : timetable.semesterSelections?.[semester] ?? []
+  }, [snapshot, timetable])
+  const nusmodsLectureCodes = useMemo(
+    () =>
+      new Set(
+        timetableSelections
+          .filter(
+            (selection) =>
+              selection.lessonType === 'Lecture' &&
+              selection.source === undefined,
+          )
+          .map((selection) => selection.moduleCode),
+      ),
+    [timetableSelections],
+  )
+  const discoverLectureCodes = useMemo(
+    () =>
+      new Set(
+        timetableSelections
+          .filter(
+            (selection) =>
+              selection.lessonType === 'Lecture' &&
+              selection.source === 'discover',
+          )
+          .map((selection) => selection.moduleCode),
+      ),
+    [timetableSelections],
+  )
+  const addedLectureCodes = useMemo(
+    () => new Set([...nusmodsLectureCodes, ...discoverLectureCodes]),
+    [discoverLectureCodes, nusmodsLectureCodes],
   )
   const searchText = useMemo(
     () => buildSearchText(snapshot?.modules ?? []),
@@ -246,10 +287,63 @@ function DiscoverPage() {
     )
   }
 
+  function toggleLectureToTimetable(session: LectureSession) {
+    if (!snapshot || nusmodsLectureCodes.has(session.moduleCode)) {
+      return
+    }
+
+    const academicYear = snapshot.pointer.acadYear
+    const semester = snapshot.pointer.semester as Semester
+    const sameAcademicYear = timetable.academicYear === academicYear
+    const selectionsFor = (term: Semester) =>
+      sameAcademicYear
+        ? term === timetable.semester
+          ? timetable.selections
+          : timetable.semesterSelections?.[term] ?? []
+        : []
+    const semesterSelections: Record<Semester, TimetableSelection[]> = {
+      1: selectionsFor(1),
+      2: selectionsFor(2),
+      3: selectionsFor(3),
+      4: selectionsFor(4),
+    }
+    const alreadyAdded = discoverLectureCodes.has(session.moduleCode)
+    semesterSelections[semester] = alreadyAdded
+      ? semesterSelections[semester].filter(
+          (selection) =>
+            selection.moduleCode !== session.moduleCode ||
+            selection.lessonType !== 'Lecture' ||
+            selection.source !== 'discover',
+        )
+      : [
+          ...semesterSelections[semester],
+          {
+            moduleCode: session.moduleCode,
+            moduleTitle: session.moduleTitle,
+            lessonType: 'Lecture',
+            classNo: session.classNo,
+            source: 'discover',
+          },
+        ]
+    const nextTimetable: TimetableState = {
+      academicYear,
+      semester,
+      selections: semesterSelections[semester],
+      semesterSelections,
+    }
+
+    setTimetable(nextTimetable)
+    saveTimetable(nextTimetable)
+    void saveRemoteTimetable(
+      { academicYear, semesters: semesterSelections },
+      getAccessToken,
+    ).catch(() => undefined)
+  }
+
   if (snapshotError) {
     return (
       <main className="discover-page">
-        <h1>Discover lectures</h1>
+        <h1>Discover Lectures</h1>
         <p className="status-message">
           Lecture data is unavailable right now ({snapshotError}). Try again
           later.
@@ -261,7 +355,7 @@ function DiscoverPage() {
   if (!snapshot || !selectedWeek) {
     return (
       <main className="discover-page">
-        <h1>Discover lectures</h1>
+        <h1>Discover Lectures</h1>
         <p aria-live="polite">
           {snapshot ? 'No lectures have been published yet.' : 'Loading…'}
         </p>
@@ -272,18 +366,16 @@ function DiscoverPage() {
   return (
     <main className="discover-page">
       <header className="discover-header">
-        <h1>Discover lectures</h1>
-        <p>
-          Find lectures outside your modules that you can drop in on.{' '}
-          <span className="data-note">
-            {formatTerm(snapshot.pointer.acadYear, snapshot.pointer.semester)},
-            updated{' '}
-            {formatDate(snapshot.pointer.generatedAt.slice(0, 10), {
-              day: 'numeric',
-              month: 'short',
-              year: 'numeric',
-            })}
-          </span>
+        <h1>Discover Lectures</h1>
+        <p>Find lectures outside your modules that you can drop in on.</p>
+        <p className="data-note">
+          {formatTerm(snapshot.pointer.acadYear, snapshot.pointer.semester)},
+          updated{' '}
+          {formatDate(snapshot.pointer.generatedAt.slice(0, 10), {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          })}
         </p>
       </header>
 
@@ -324,12 +416,18 @@ function DiscoverPage() {
 
           <label>
             Week
-            <select
+            <SelectField
               value={selectedWeek.week}
-              onChange={(event) =>
-                updateFilters({ week: event.target.value, days: [] })
-              }
-            >
+              onValueChange={(value) => updateFilters({ week: value, days: [] })}
+              options={weeks.map((week) => ({
+                value: week.week,
+                label: `${weekName(week.week)} · ${formatDate(week.startDate, {
+                  day: 'numeric',
+                  month: 'short',
+                })}`,
+              }))}
+              aria-label="Week"
+            >{/*
               {weeks.map((week) => (
                 <option key={week.week} value={week.week}>
                   {weekName(week.week)} ·{' '}
@@ -338,8 +436,8 @@ function DiscoverPage() {
                     month: 'short',
                   })}
                 </option>
-              ))}
-            </select>
+            ))}
+            */}</SelectField>
           </label>
 
           <fieldset>
@@ -442,18 +540,21 @@ function DiscoverPage() {
 
           <label>
             Minimum class size
-            <select
-              value={filters.minSize}
-              onChange={(event) =>
-                updateFilters({ minSize: Number(event.target.value) })
-              }
-            >
+            <SelectField
+              value={String(filters.minSize)}
+              onValueChange={(value) => updateFilters({ minSize: Number(value) })}
+              options={MIN_SIZE_OPTIONS.map((size) => ({
+                value: String(size),
+                label: size === 0 ? 'Any size' : `${size}+ students`,
+              }))}
+              aria-label="Minimum class size"
+            >{/*
               {MIN_SIZE_OPTIONS.map((size) => (
                 <option key={size} value={size}>
                   {size === 0 ? 'Any size' : `${size}+ students`}
                 </option>
               ))}
-            </select>
+            */}</SelectField>
           </label>
 
           <label className="checkbox">
@@ -508,6 +609,13 @@ function DiscoverPage() {
                         key={session.id}
                         session={session}
                         module={modulesByCode.get(session.moduleCode)}
+                        addedToTimetable={addedLectureCodes.has(
+                          session.moduleCode,
+                        )}
+                        disableAdd={nusmodsLectureCodes.has(session.moduleCode)}
+                        onAddToTimetable={() =>
+                          toggleLectureToTimetable(session)
+                        }
                       />
                     ))}
                   </div>

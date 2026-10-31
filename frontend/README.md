@@ -35,7 +35,7 @@ Choose an academic year (`YYYY-YYYY`). To build a timetable manually, select a s
 
 To import a timetable, paste a NUSMods student timetable share link. The link supplies the semester, and importing replaces any existing timetable after confirmation.
 
-Selections are saved in this browser when local storage is available. Changing year or semester clears the current selections. Possible timetable conflicts are highlighted.
+Selections are saved in this browser when local storage is available. Changing year or semester clears the current selections.
 
 Module search and timetable loading require access to the public NUSMods API.
 
