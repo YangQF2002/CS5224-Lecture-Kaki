@@ -90,7 +90,7 @@ Resources:
           if (uri.startsWith('/lectures/') || uri.startsWith('/assets/')) {
             return request;
           }
-          if (uri.split('/').pop().indexOf('.') === -1) {
+          if (uri === '/forum' || uri.startsWith('/forum/') || uri.split('/').pop().indexOf('.') === -1) {
             request.uri = '/index.html';
           }
           return request;

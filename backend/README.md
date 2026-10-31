@@ -36,6 +36,11 @@ Deploy authentication once to a shared development AWS account in `ap-southeast-
 
 See [authentication](../docs/authentication.md) for the flow, integration details, deployment commands, and opt-in Cognito tests.
 
+## Forum
+
+The shared API serves authenticated Forum history, posting, owner-only deletion
+and native WebSocket updates. See [Forum setup](../docs/forum.md) for the table,
+frontend login, local run commands and single-worker deployment limit.
 ## Personal timetables
 
 `/timetable` stores one timetable per authenticated user. PUT validates selections against NUSMods and replaces the saved timetable; concurrent updates use last-write-wins.

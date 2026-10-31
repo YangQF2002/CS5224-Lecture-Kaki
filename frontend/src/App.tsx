@@ -12,6 +12,7 @@ function App() {
             Discover
           </NavLink>
           <NavLink to="/timetable">My timetable</NavLink>
+          <NavLink to="/forum">Forum</NavLink>
         </nav>
       </header>
       <Outlet />

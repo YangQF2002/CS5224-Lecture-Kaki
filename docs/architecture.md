@@ -7,7 +7,9 @@ Scheduled jobs and Cognito triggers are packaged separately as Lambdas.
 ## Target AWS deployment
 
 S3 and CloudFront serve the React build and lecture JSON; an EC2 instance runs
-the FastAPI container behind Caddy. There is no API Gateway.
+the FastAPI container behind Caddy. There is no API Gateway. Forum persists
+messages in DynamoDB and delivers live events through the same API's WebSockets.
+The prototype uses one API instance and one Uvicorn worker for in-memory rooms.
 
 ```mermaid
 flowchart LR
@@ -19,6 +21,7 @@ flowchart LR
 
         subgraph region["Region: ap-southeast-1"]
             bucket[("Private S3 bucket<br/>React build + lectures/ snapshots")]
+            forumdb[("DynamoDB<br/>Forum messages + temporary tickets")]
             cognito["Cognito user pool + hosted login"]
             signup["Pre-signup Lambda<br/>NUS email validation"]
             scheduler["EventBridge Scheduler<br/>Monday 03:00 Singapore time"]
@@ -41,6 +44,8 @@ flowchart LR
     browser -->|"HTTPS API + Bearer access token"| proxy
     proxy -->|"HTTP to 127.0.0.1:8000"| api
     api -.->|"Fetch and cache public signing keys"| cognito
+    browser <-->|"Live Forum events over WSS"| proxy
+    api -->|"Read/write Forum records"| forumdb
     api -->|"User timetable, keyed by Cognito sub"| timetables
     api -->|"Validate selected lesson groups"| nusmods
     browser -.->|"Current timetable fetches directly"| nusmods
@@ -54,6 +59,7 @@ flowchart LR
     classDef identity fill:#faf5ff,stroke:#9333ea,color:#3b0764
     class browser,nusmods client
     class proxy,api,ingest,signup compute
+    class bucket,cloudfront,forumdb storage
     class bucket,cloudfront,timetables storage
     class cognito identity
 ```
@@ -75,7 +81,8 @@ Deploy hosting before ingestion; delete ingestion first. The user pool, web buck
 
 CloudFront reads the private bucket through OAC and caches by each object's
 `Cache-Control` header (minimum TTL 0). A viewer-request function serves
-`index.html` for extensionless paths such as `/auth/callback`; `/assets/*` and
+`index.html` for extensionless paths such as `/auth/callback` and for `/forum/*`
+room links, including IDs containing periods; `/assets/*` and
 `/lectures/*` are passed through, so missing files stay errors. Responses carry
 the managed security headers policy.
 
@@ -91,12 +98,19 @@ exclude `lectures/*` so `--delete` keeps lecture data; see
 4. `get_current_user` validates the token and returns the Cognito `sub` as the
    user ID.
 
+Token validation uses `AWS_REGION`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`
+and `COGNITO_DOMAIN`, without a client secret. Forum also needs `DYNAMODB_TABLE`
+and AWS credentials with table access. `FRONTEND_ORIGINS` controls HTTP and
+WebSocket origins; see [Forum setup](forum.md).
 Authentication uses public [Cognito configuration](authentication.md#local-configuration). Timetable storage requires an AWS identity with table access; see [backend setup](../backend/README.md#personal-timetables).
 
 ### Still to build
 
 - **EC2 API:** stable DNS name, Caddy for HTTPS, backend bound to
   `127.0.0.1:8000`, auto-restart, CloudWatch logs and health monitoring.
+- **Hosted configuration:** set the website/API origins and register exact
+  frontend callback/logout URLs. Forum implements CORS and browser login,
+  callback handling, refresh and logout.
 - **Frontend login:** callback, refresh and logout; register the exact callback
   and logout URLs in Cognito.
 - **Lecture discovery P2–P4:** interest topics, timetable-aware suggestions and
@@ -115,6 +129,7 @@ References: [authentication](authentication.md), [lecture data](lecture-data.md)
 frontend/src/features/
   discovery/              Lecture discovery page; filters static /lectures/ data
   timetable/              Timetable UI, NUSMods import, clash detection, storage
+  forum/                  Discussions, browser login, history and live updates
 backend/
   app/                    FastAPI application and API modules
   jobs/lecture_ingest/    Scheduled ingestion job (own Lambda; handler.py entry)
@@ -133,6 +148,7 @@ backend/app/
     api.py                Routes
     dependencies.py       Token validation and signing-key cache
     schemas.py            Data contracts
+  modules/forum/          Forum routes, rules, DynamoDB access and live rooms
   modules/timetable/      Personal timetable routes, validation and DynamoDB storage
 ```
 

@@ -1,0 +1,208 @@
+.forum-page {
+  max-width: 48rem;
+  margin: 2rem auto;
+  padding: 0 1.5rem 4rem;
+}
+
+.forum-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0 0 1rem;
+}
+
+.forum-page a {
+  color: #1d4ed8;
+}
+.forum-page input {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem;
+}
+
+.forum-page header {
+  margin-bottom: 1.25rem;
+}
+
+.forum-page h1 {
+  margin: 0 0 0.25rem;
+  font-size: 2rem;
+}
+
+.forum-page header p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.message-list {
+  display: grid;
+  gap: 0.6rem;
+  margin-bottom: 1.25rem;
+}
+
+.message {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: white;
+  border: 1px solid #dbe2ea;
+}
+
+.message.own {
+  border-left: 0.3rem solid #2563eb;
+}
+
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.message-author {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.message-time {
+  color: #94a3b8;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.message-content {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-delete {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0;
+  min-height: unset;
+}
+
+.message-delete:hover {
+  color: #dc2626;
+}
+
+.load-older {
+  display: block;
+  width: 100%;
+  margin-bottom: 1rem;
+  background: white;
+  color: #2563eb;
+  border-color: #2563eb;
+}
+
+.composer {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.composer textarea {
+  width: 100%;
+  min-height: 4rem;
+  resize: vertical;
+  box-sizing: border-box;
+  border: 1px solid #94a3b8;
+  border-radius: 0.4rem;
+  padding: 0.5rem 0.7rem;
+  font: inherit;
+}
+
+.composer-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.char-count {
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.char-count.over {
+  color: #dc2626;
+}
+
+.forum-browser {
+  max-width: 64rem;
+}
+.forum-term,
+.forum-compose-hint {
+  color: #64748b;
+  font-size: 0.875rem;
+}
+.forum-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+.forum-filters label {
+  min-width: 0;
+}
+.forum-filters select {
+  width: 100%;
+}
+.forum-lecture-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+.forum-lecture {
+  margin: 0;
+}
+.forum-lecture h2 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+.forum-lecture h2 span {
+  font-weight: 400;
+}
+.forum-lecture p {
+  color: #475569;
+  margin: 0.5rem 0;
+}
+.forum-join {
+  display: inline-block;
+  padding: 0.25rem 0;
+}
+.forum-shared-link {
+  margin-top: 1.5rem;
+}
+.forum-shared-link summary {
+  cursor: pointer;
+}
+.forum-shared-link form {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+.forum-share {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.forum-share label {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.forum-compose-hint {
+  margin: 0;
+}
+@media (max-width: 600px) {
+  .forum-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

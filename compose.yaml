@@ -21,6 +21,12 @@ services:
     build:
       context: ./frontend
       target: runtime
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+        VITE_COGNITO_DOMAIN: ${VITE_COGNITO_DOMAIN:-}
+        VITE_COGNITO_CLIENT_ID: ${VITE_COGNITO_CLIENT_ID:-}
+        VITE_COGNITO_REDIRECT_URI: ${VITE_COGNITO_REDIRECT_URI:-http://localhost:8080/auth/callback}
+        VITE_COGNITO_LOGOUT_URI: ${VITE_COGNITO_LOGOUT_URI:-http://localhost:8080/forum}
     ports:
       - "127.0.0.1:${FRONTEND_PORT:-8080}:8080"
     volumes:
