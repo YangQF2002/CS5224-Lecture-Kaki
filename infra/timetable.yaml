@@ -1,0 +1,46 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: LectureKaki personal timetable storage.
+
+Parameters:
+  Env:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+
+Conditions:
+  IsProduction: !Equals [!Ref Env, prod]
+
+Resources:
+  TimetableTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Sub 'lecture-kaki-timetables-${Env}'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: !If
+          - IsProduction
+          - true
+          - false
+
+Outputs:
+  TimetableTableName:
+    Value: !Ref TimetableTable
+    Export:
+      Name: !Sub 'lecture-kaki-timetable-${Env}-TableName'
+
+  TimetableTableArn:
+    Value: !GetAtt TimetableTable.Arn
+    Export:
+      Name: !Sub 'lecture-kaki-timetable-${Env}-TableArn'
