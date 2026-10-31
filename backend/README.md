@@ -3,7 +3,7 @@
 For container startup and checks, see [Docker setup](../docs/docker.md).
 See [architecture](../docs/architecture.md) for the repository layout and execution boundaries:
 
-- `app/`: the FastAPI application, composed in `app/main.py`, with authentication in `app/modules/auth/`.
+- `app/`: the FastAPI application, composed in `app/main.py`, with feature modules in `app/modules/`.
 - `jobs/lecture_ingest/`: the scheduled ingestion handler and its data processing code, packaged as a separate Lambda.
 - `lambdas/pre_signup/`: the Cognito signup validation trigger.
 - `scripts/`: local execution and packaging tools.
@@ -41,6 +41,19 @@ See [authentication](../docs/authentication.md) for the flow, integration detail
 The shared API serves authenticated Forum history, posting, owner-only deletion
 and native WebSocket updates. See [Forum setup](../docs/forum.md) for the table,
 frontend login, local run commands and single-worker deployment limit.
+## Personal timetables
+
+`/timetable` stores one timetable per authenticated user. PUT validates selections against NUSMods and replaces the saved timetable; concurrent updates use last-write-wins.
+
+Deploy from the repository root with the [development AWS profile](../docs/aws-dev-setup.md#1-configure-the-cli-profile):
+
+```sh
+aws cloudformation deploy --template-file infra/timetable.yaml --stack-name lecture-kaki-timetable-dev --parameter-overrides Env=dev --region ap-southeast-1 --profile cs5224-dev
+```
+
+Set `TIMETABLE_TABLE_NAME` in `.env.local` to the stack's `TimetableTableName` output and `AWS_REGION` to its region. Set `FRONTEND_ORIGINS` to the allowed browser origins, comma-separated.
+
+The API's AWS identity needs `dynamodb:GetItem`, `dynamodb:PutItem` and `dynamodb:DeleteItem` on the stack's `TimetableTableArn`; the stack does not grant these permissions. Select `AWS_PROFILE` for native development, use an instance role on EC2, or pass temporary credentials for [local Docker](../docs/docker.md#timetable-storage).
 
 ## Lecture data ingestion
 

@@ -26,6 +26,7 @@ flowchart LR
             signup["Pre-signup Lambda<br/>NUS email validation"]
             scheduler["EventBridge Scheduler<br/>Monday 03:00 Singapore time"]
             ingest["Ingestion Lambda<br/>jobs/lecture_ingest/"]
+            timetables[("DynamoDB<br/>Personal timetables")]
 
             subgraph network["VPC / public subnet"]
                 subgraph ec2["EC2 instance"]
@@ -45,6 +46,8 @@ flowchart LR
     api -.->|"Fetch and cache public signing keys"| cognito
     browser <-->|"Live Forum events over WSS"| proxy
     api -->|"Read/write Forum records"| forumdb
+    api -->|"User timetable, keyed by Cognito sub"| timetables
+    api -->|"Validate selected lesson groups"| nusmods
     browser -.->|"Current timetable fetches directly"| nusmods
     scheduler -->|"Invoke; job checks whether ingestion is due"| ingest
     ingest -->|"Fetch module and venue data"| nusmods
@@ -57,22 +60,22 @@ flowchart LR
     class browser,nusmods client
     class proxy,api,ingest,signup compute
     class bucket,cloudfront,forumdb storage
+    class bucket,cloudfront,timetables storage
     class cognito identity
 ```
 
 ### Infrastructure stacks
 
 Each `infra/` template is its own stack, named `lecture-kaki-<part>-<env>`.
-Deploy hosting before ingestion; delete ingestion first. The user pool and web
-bucket are retained on stack deletion. Lambda packages go to a separate private
-artifact bucket.
+Deploy hosting before ingestion; delete ingestion first. The user pool, web bucket and timetable table are retained on stack deletion. Lambda packages go to a separate private artifact bucket.
 
-| Stack | Template | Owns | Status |
-| --- | --- | --- | --- |
-| `auth` | `infra/auth.yaml` | Cognito user pool, hosted login, pre-signup Lambda | Template ready |
-| `hosting` | `infra/hosting.yaml` | Web bucket (exports name and ARN), CloudFront with OAC, app routing function | Template ready |
-| `ingest` | `infra/ingest.yaml` | Ingestion Lambda, schedule, logs, failure alarm | Template ready |
-| `api` | — | EC2, Caddy, FastAPI container | Not started |
+| Stack       | Template               | Owns                                                                         | Status         |
+| ----------- | ---------------------- | ---------------------------------------------------------------------------- | -------------- |
+| `auth`      | `infra/auth.yaml`      | Cognito user pool, hosted login, pre-signup Lambda                           | Template ready |
+| `hosting`   | `infra/hosting.yaml`   | Web bucket (exports name and ARN), CloudFront with OAC, app routing function | Template ready |
+| `ingest`    | `infra/ingest.yaml`    | Ingestion Lambda, schedule, logs, failure alarm                              | Template ready |
+| `timetable` | `infra/timetable.yaml` | DynamoDB table for each user's timetable                                     | Template ready |
+| `api`       | —                      | EC2, Caddy, FastAPI container                                                | Not started    |
 
 ### Website hosting
 
@@ -99,6 +102,7 @@ Token validation uses `AWS_REGION`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`
 and `COGNITO_DOMAIN`, without a client secret. Forum also needs `DYNAMODB_TABLE`
 and AWS credentials with table access. `FRONTEND_ORIGINS` controls HTTP and
 WebSocket origins; see [Forum setup](forum.md).
+Authentication uses public [Cognito configuration](authentication.md#local-configuration). Timetable storage requires an AWS identity with table access; see [backend setup](../backend/README.md#personal-timetables).
 
 ### Still to build
 
@@ -107,11 +111,12 @@ WebSocket origins; see [Forum setup](forum.md).
 - **Hosted configuration:** set the website/API origins and register exact
   frontend callback/logout URLs. Forum implements CORS and browser login,
   callback handling, refresh and logout.
+- **Frontend login:** callback, refresh and logout; register the exact callback
+  and logout URLs in Cognito.
 - **Lecture discovery P2–P4:** interest topics, timetable-aware suggestions and
   login features; see [lecture discovery](lecture-discovery.md).
 
-Timetable selections stay in browser storage; account-based persistence would
-need a separate API and database.
+The timetable API and table template are implemented. Connecting browser-local timetables to account storage remains unfinished.
 
 References: [authentication](authentication.md), [lecture data](lecture-data.md),
 [personal AWS setup](aws-dev-setup.md),
@@ -144,6 +149,7 @@ backend/app/
     dependencies.py       Token validation and signing-key cache
     schemas.py            Data contracts
   modules/forum/          Forum routes, rules, DynamoDB access and live rooms
+  modules/timetable/      Personal timetable routes, validation and DynamoDB storage
 ```
 
 Add features under `app/modules/<feature>/` and register their routers in

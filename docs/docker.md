@@ -23,11 +23,9 @@ reports that lecture data is unavailable.
 Compose reads optional runtime configuration from `backend/.env.local`. Create
 it from `backend/.env.example` only if it does not exist, then fill in the public
 Cognito values from your stack outputs. Environment files and credentials are
-excluded from Docker build contexts. Cognito token validation needs no AWS
-credentials; Forum storage requires credentials with access to `DYNAMODB_TABLE`.
-Compose does not mount host AWS credentials; see [Forum setup](forum.md#local-development)
-for running the local API with a development profile.
-After changing configuration, recreate the backend:
+excluded from Docker build contexts. Timetable storage also needs 
+[DynamoDB access](#timetable-storage). After changing configuration, 
+recreate the backend:
 
 ```sh
 docker compose up -d --force-recreate backend
@@ -59,6 +57,21 @@ These images run production processes without bind mounts or hot reload. Rebuild
 source changes with `docker compose up --build -d --wait`. For hot reload,
 use the native workflows in the [backend](../backend/README.md) and
 [frontend](../frontend/README.md) READMEs.
+
+## Timetable storage
+
+Configure the table and permissions using the [backend instructions](../backend/README.md#personal-timetables). Compose does not forward host AWS credentials. After [SSO login](aws-dev-setup.md#1-configure-the-cli-profile), pass temporary credentials from PowerShell:
+
+```powershell
+$timetableCredentials = aws configure export-credentials --profile cs5224-dev --format process | ConvertFrom-Json
+$env:AWS_ACCESS_KEY_ID = $timetableCredentials.AccessKeyId
+$env:AWS_SECRET_ACCESS_KEY = $timetableCredentials.SecretAccessKey
+$env:AWS_SESSION_TOKEN = $timetableCredentials.SessionToken
+docker compose stop backend
+docker compose run --rm --service-ports -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN backend
+```
+
+The container reads `backend/.env.local`. Refresh credentials and recreate it when the session expires.
 
 ## Test
 
