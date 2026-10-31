@@ -155,9 +155,11 @@ function LecturePicker() {
                   }))
                 : [{ value: 'none', label: 'No weeks available' }]
             }
-          >{/*
+          >
+            {/*
                 {weekName(week.week)} · {lectureDate(week.startDate)}
-          */}</SelectField>
+          */}
+          </SelectField>
         </label>
       </section>
       {failed ? (

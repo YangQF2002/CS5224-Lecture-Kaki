@@ -51,9 +51,9 @@ export function expandSelections(
             (!selection.week ||
               (Array.isArray(lesson.weeks)
                 ? lesson.weeks.includes(selection.week)
-                : lesson.weeks.weeks?.includes(selection.week) ??
+                : (lesson.weeks.weeks?.includes(selection.week) ??
                   (selection.week - 1) % (lesson.weeks.weekInterval ?? 1) ===
-                    0)),
+                    0))),
         )
         .map((lesson) => ({
           ...lesson,

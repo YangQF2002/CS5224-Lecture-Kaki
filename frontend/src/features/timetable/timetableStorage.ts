@@ -3,23 +3,20 @@ import {
   getDefaultSemester,
   isAcademicYear,
 } from './nusmodsApi.ts'
-import type {
-  Semester,
-  TimetableSelection,
-  TimetableState,
-} from './types.ts'
+import type { Semester, TimetableSelection, TimetableState } from './types.ts'
 
 const STORAGE_KEY = 'lecture-kaki:timetable:v1'
 
 function isSelection(value: unknown): value is TimetableSelection {
   if (typeof value !== 'object' || value === null) return false
   const selection = value as Partial<TimetableSelection>
-  return [
-    selection.moduleCode,
-    selection.moduleTitle,
-    selection.lessonType,
-    selection.classNo,
-  ].every((field) => typeof field === 'string' && field.trim().length > 0) &&
+  return (
+    [
+      selection.moduleCode,
+      selection.moduleTitle,
+      selection.lessonType,
+      selection.classNo,
+    ].every((field) => typeof field === 'string' && field.trim().length > 0) &&
     (selection.day === undefined || typeof selection.day === 'string') &&
     (selection.week === undefined ||
       (typeof selection.week === 'number' &&
@@ -27,6 +24,7 @@ function isSelection(value: unknown): value is TimetableSelection {
         selection.week >= 1 &&
         selection.week <= 13)) &&
     (selection.source === undefined || selection.source === 'discover')
+  )
 }
 
 export function loadTimetable(): TimetableState {
@@ -55,10 +53,12 @@ export function loadTimetable(): TimetableState {
       !state.selections.every(isSelection)
     )
       return fallback
-    const semesterSelections: Partial<
-      Record<Semester, TimetableSelection[]>
-    > = {}
-    if (state.semesterSelections && typeof state.semesterSelections === 'object') {
+    const semesterSelections: Partial<Record<Semester, TimetableSelection[]>> =
+      {}
+    if (
+      state.semesterSelections &&
+      typeof state.semesterSelections === 'object'
+    ) {
       for (const semester of [1, 2, 3, 4] as const) {
         const selections = state.semesterSelections[semester]
         if (Array.isArray(selections) && selections.every(isSelection)) {

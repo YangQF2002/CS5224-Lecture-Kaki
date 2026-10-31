@@ -22,7 +22,11 @@ import {
 import { fetchLectureSnapshot, fetchWeekSessions } from './lectureApi.ts'
 import MultiSelect, { type MultiSelectOption } from './MultiSelect.tsx'
 import SessionCard from './SessionCard.tsx'
-import type { Semester, TimetableSelection, TimetableState } from '../timetable/types.ts'
+import type {
+  Semester,
+  TimetableSelection,
+  TimetableState,
+} from '../timetable/types.ts'
 import type { LectureSession, LectureSnapshot, WeekSessions } from './types.ts'
 import './discovery.css'
 const PAGE_SIZE = 50
@@ -154,7 +158,7 @@ function DiscoverPage() {
     const semester = snapshot.pointer.semester as Semester
     return semester === timetable.semester
       ? timetable.selections
-      : timetable.semesterSelections?.[semester] ?? []
+      : (timetable.semesterSelections?.[semester] ?? [])
   }, [snapshot, timetable])
   const nusmodsLectureCodes = useMemo(
     () =>
@@ -299,7 +303,7 @@ function DiscoverPage() {
       sameAcademicYear
         ? term === timetable.semester
           ? timetable.selections
-          : timetable.semesterSelections?.[term] ?? []
+          : (timetable.semesterSelections?.[term] ?? [])
         : []
     const semesterSelections: Record<Semester, TimetableSelection[]> = {
       1: selectionsFor(1),
@@ -418,7 +422,9 @@ function DiscoverPage() {
             Week
             <SelectField
               value={selectedWeek.week}
-              onValueChange={(value) => updateFilters({ week: value, days: [] })}
+              onValueChange={(value) =>
+                updateFilters({ week: value, days: [] })
+              }
               options={weeks.map((week) => ({
                 value: week.week,
                 label: `${weekName(week.week)} · ${formatDate(week.startDate, {
@@ -427,7 +433,8 @@ function DiscoverPage() {
                 })}`,
               }))}
               aria-label="Week"
-            >{/*
+            >
+              {/*
               {weeks.map((week) => (
                 <option key={week.week} value={week.week}>
                   {weekName(week.week)} ·{' '}
@@ -437,7 +444,8 @@ function DiscoverPage() {
                   })}
                 </option>
             ))}
-            */}</SelectField>
+            */}
+            </SelectField>
           </label>
 
           <fieldset>
@@ -542,19 +550,23 @@ function DiscoverPage() {
             Minimum class size
             <SelectField
               value={String(filters.minSize)}
-              onValueChange={(value) => updateFilters({ minSize: Number(value) })}
+              onValueChange={(value) =>
+                updateFilters({ minSize: Number(value) })
+              }
               options={MIN_SIZE_OPTIONS.map((size) => ({
                 value: String(size),
                 label: size === 0 ? 'Any size' : `${size}+ students`,
               }))}
               aria-label="Minimum class size"
-            >{/*
+            >
+              {/*
               {MIN_SIZE_OPTIONS.map((size) => (
                 <option key={size} value={size}>
                   {size === 0 ? 'Any size' : `${size}+ students`}
                 </option>
               ))}
-            */}</SelectField>
+            */}
+            </SelectField>
           </label>
 
           <label className="checkbox">

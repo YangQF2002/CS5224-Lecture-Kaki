@@ -33,11 +33,7 @@ class TimetableSelection(BaseModel):
 
     @model_serializer(mode="wrap")
     def omit_empty_occurrence_fields(self, handler):
-        return {
-            key: value
-            for key, value in handler(self).items()
-            if value is not None
-        }
+        return {key: value for key, value in handler(self).items() if value is not None}
 
     @field_validator("module_code", mode="before")
     @classmethod
@@ -109,9 +105,7 @@ class TimetableBook(BaseModel):
                 for selection in selections
             ]
             if len(identifiers) != len(set(identifiers)):
-                raise ValueError(
-                    "a module may contain only one class per lesson type"
-                )
+                raise ValueError("a module may contain only one class per lesson type")
             if len(selections) > 100:
                 raise ValueError("a semester may contain at most 100 selections")
 

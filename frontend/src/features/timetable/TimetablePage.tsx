@@ -67,7 +67,10 @@ const MODULE_COLORS = [
   'clay',
 ] as const
 
-function moduleColor(moduleCode: string, selectedModuleCodes: string[]): string {
+function moduleColor(
+  moduleCode: string,
+  selectedModuleCodes: string[],
+): string {
   const index = selectedModuleCodes.indexOf(moduleCode)
   return MODULE_COLORS[(index < 0 ? 0 : index) % MODULE_COLORS.length]
 }
@@ -369,7 +372,9 @@ function TimetablePage() {
   }, [selectedModule, timetable.semester])
 
   const selectedModuleCodes = useMemo(() => {
-    const codes = [...new Set(timetable.selections.map((selection) => selection.moduleCode))]
+    const codes = [
+      ...new Set(timetable.selections.map((selection) => selection.moduleCode)),
+    ]
 
     return codes
       .map((moduleCode, index) => ({
@@ -399,10 +404,11 @@ function TimetablePage() {
 
     return teachingWeek === null
       ? []
-      : expanded.filter((lesson) =>
-          (lesson.selectedWeek === undefined ||
-            lesson.selectedWeek === teachingWeek) &&
-          lessonIsInTeachingWeek(lesson.weeks, teachingWeek),
+      : expanded.filter(
+          (lesson) =>
+            (lesson.selectedWeek === undefined ||
+              lesson.selectedWeek === teachingWeek) &&
+            lessonIsInTeachingWeek(lesson.weeks, teachingWeek),
         )
   }, [modules, selectedWeekIndex, timetable.selections, timetable.semester])
 
@@ -702,8 +708,7 @@ function TimetablePage() {
                   onValueChange={(value) =>
                     setGroupChoices((current) => ({
                       ...current,
-                      [lessonType]:
-                        value === EMPTY_SELECT_VALUE ? '' : value,
+                      [lessonType]: value === EMPTY_SELECT_VALUE ? '' : value,
                     }))
                   }
                 />
@@ -734,53 +739,53 @@ function TimetablePage() {
               }
             </span>
           )}
-        {timetable.selections.length === 0 ? (
-          <p>No modules added yet.</p>
-        ) : (
-          <div className="module-strip">
-            {selectedModuleCodes.map((moduleCode) => {
-              const moduleSelections = timetable.selections.filter(
-                (selection) => selection.moduleCode === moduleCode,
-              )
-              const moduleTitle = moduleSelections[0]?.moduleTitle ?? ''
+          {timetable.selections.length === 0 ? (
+            <p>No modules added yet.</p>
+          ) : (
+            <div className="module-strip">
+              {selectedModuleCodes.map((moduleCode) => {
+                const moduleSelections = timetable.selections.filter(
+                  (selection) => selection.moduleCode === moduleCode,
+                )
+                const moduleTitle = moduleSelections[0]?.moduleTitle ?? ''
 
-              return (
-                <article
-                  className={`selected-module module-card ${moduleColor(moduleCode, selectedModuleCodes)}`}
-                  key={moduleCode}
-                >
-                  <button
-                    className="remove-module"
-                    type="button"
-                    aria-label="Remove"
-                    title={`Remove ${moduleCode}`}
-                    disabled={loading}
-                    onClick={() => removeModule(moduleCode)}
+                return (
+                  <article
+                    className={`selected-module module-card ${moduleColor(moduleCode, selectedModuleCodes)}`}
+                    key={moduleCode}
                   >
-                    <span aria-hidden="true">×</span>
-                  </button>
-                  <strong className="module-code">{moduleCode}</strong>
-                  <span className="module-title">{moduleTitle}</span>
-                  {moduleSelections.some(
-                    (selection) => selection.source === 'discover',
-                  ) && <span className="module-origin">From Discover</span>}
-                  <ul>
-                    {moduleSelections.map((selection) => (
-                      <li
-                        key={`${selection.lessonType}-${selection.week ?? ''}-${selection.day ?? ''}`}
-                      >
-                        {selection.lessonType}: {selection.classNo}
-                        {selection.week !== undefined &&
-                          ` · Week ${selection.week}`}
-                        {selection.day && ` · ${selection.day}`}
-                      </li>
-                    ))}
-                  </ul>
-                </article>
-              )
-            })}
-          </div>
-        )}
+                    <button
+                      className="remove-module"
+                      type="button"
+                      aria-label="Remove"
+                      title={`Remove ${moduleCode}`}
+                      disabled={loading}
+                      onClick={() => removeModule(moduleCode)}
+                    >
+                      <span aria-hidden="true">×</span>
+                    </button>
+                    <strong className="module-code">{moduleCode}</strong>
+                    <span className="module-title">{moduleTitle}</span>
+                    {moduleSelections.some(
+                      (selection) => selection.source === 'discover',
+                    ) && <span className="module-origin">From Discover</span>}
+                    <ul>
+                      {moduleSelections.map((selection) => (
+                        <li
+                          key={`${selection.lessonType}-${selection.week ?? ''}-${selection.day ?? ''}`}
+                        >
+                          {selection.lessonType}: {selection.classNo}
+                          {selection.week !== undefined &&
+                            ` · Week ${selection.week}`}
+                          {selection.day && ` · ${selection.day}`}
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                )
+              })}
+            </div>
+          )}
         </div>
       </section>
 
@@ -789,7 +794,8 @@ function TimetablePage() {
           <div>
             <h2>Weekly schedule</h2>
             <p className="section-hint">
-              {academicYearLabel(timetable.academicYear)} · {semesterLabel(timetable.semester)}
+              {academicYearLabel(timetable.academicYear)} ·{' '}
+              {semesterLabel(timetable.semester)}
             </p>
           </div>
           <div className="week-navigator" aria-label="Week navigator">
@@ -820,9 +826,11 @@ function TimetablePage() {
           <div className="schedule-scroll">
             <div
               className="schedule-grid"
-              style={{
-                '--schedule-columns': scheduleRange.hours.length - 1,
-              } as CSSProperties}
+              style={
+                {
+                  '--schedule-columns': scheduleRange.hours.length - 1,
+                } as CSSProperties
+              }
             >
               <div className="schedule-corner" />
               <div className="schedule-hours">
@@ -833,10 +841,14 @@ function TimetablePage() {
 
               {SCHEDULE_DAYS.map((day) => (
                 <div className="schedule-row" key={day}>
-                  <div className="day-label">{day.slice(0, 3).toUpperCase()}</div>
+                  <div className="day-label">
+                    {day.slice(0, 3).toUpperCase()}
+                  </div>
                   <div
                     className="day-track"
-                    style={{ minHeight: `${dayStackCount(day) * DAY_ROW_HEIGHT_REM}rem` }}
+                    style={{
+                      minHeight: `${dayStackCount(day) * DAY_ROW_HEIGHT_REM}rem`,
+                    }}
                   >
                     {scheduleRange.hours.slice(0, -1).map((hour, index) => (
                       <span
@@ -895,7 +907,6 @@ function TimetablePage() {
           </div>
         </div>
       </section>
-
     </main>
   )
 }

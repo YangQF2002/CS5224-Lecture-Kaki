@@ -30,7 +30,10 @@ function SelectField({
       onValueChange={onValueChange}
       disabled={disabled}
     >
-      <RadixSelect.Trigger className="radix-select-trigger" aria-label={ariaLabel}>
+      <RadixSelect.Trigger
+        className="radix-select-trigger"
+        aria-label={ariaLabel}
+      >
         <RadixSelect.Value placeholder={placeholder} />
         <RadixSelect.Icon className="radix-select-icon">
           <span className="radix-select-chevron" aria-hidden="true" />

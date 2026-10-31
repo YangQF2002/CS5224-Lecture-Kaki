@@ -101,7 +101,9 @@ async function chooseOption(label: string, option: string) {
 
 function selectedModules() {
   return within(
-    screen.getByRole('heading', { name: 'Selected modules' }).closest('.panel')!,
+    screen
+      .getByRole('heading', { name: 'Selected modules' })
+      .closest('.panel')!,
   )
 }
 
