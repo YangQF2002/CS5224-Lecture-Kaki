@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      // Lecture JSON is same-origin in production; see docs/lecture-data.md.
+      // Lecture JSON is same-origin in production; see docs/architecture.md.
       '/lectures': {
         target: process.env.LECTURES_ORIGIN ?? 'http://localhost:8001',
         changeOrigin: true,
