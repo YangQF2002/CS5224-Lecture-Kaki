@@ -1,168 +1,69 @@
 # Architecture
 
-LectureKaki groups code by where it runs. React runs in the browser (served by
-Nginx locally). FastAPI is a modular monolith released as one backend image.
-Scheduled jobs and Cognito triggers are packaged separately as Lambdas.
-
-## Target AWS deployment
-
-S3 and CloudFront serve the React build and lecture JSON; an EC2 instance runs
-the FastAPI container behind Caddy. There is no API Gateway. Forum persists
-messages in DynamoDB and delivers live events through the same API's WebSockets.
-The prototype uses one API instance and one Uvicorn worker for in-memory rooms.
+React/TypeScript runs in the browser; FastAPI runs as one backend image. Lecture ingestion and Cognito signup validation are separate Lambdas. The hosting template serves the app and lecture JSON through CloudFront with a private S3 origin and OAC. The API target is EC2 behind an HTTPS proxy such as Caddy; API hosting is not provisioned by this repository.
 
 ```mermaid
 flowchart LR
-    browser["Student's browser<br/>React application"]
-    nusmods["Public NUSMods API"]
-
-    subgraph aws["AWS"]
-        cloudfront["CloudFront<br/>HTTPS website and lecture JSON"]
-
-        subgraph region["Region: ap-southeast-1"]
-            bucket[("Private S3 bucket<br/>React build + lectures/ snapshots")]
-            forumdb[("DynamoDB<br/>Forum messages + temporary tickets")]
-            cognito["Cognito user pool + hosted login"]
-            signup["Pre-signup Lambda<br/>NUS email validation"]
-            scheduler["EventBridge Scheduler<br/>Monday 03:00 Singapore time"]
-            ingest["Ingestion Lambda<br/>jobs/lecture_ingest/"]
-            timetables[("DynamoDB<br/>Personal timetables")]
-
-            subgraph network["VPC / public subnet"]
-                subgraph ec2["EC2 instance"]
-                    proxy["Caddy<br/>HTTPS reverse proxy :443"]
-                    api["Docker: FastAPI + Uvicorn<br/>app/modules/"]
-                end
-            end
-        end
-    end
-
-    browser -->|"HTTPS: app files and lecture JSON"| cloudfront
-    cloudfront -->|"Read origin through OAC"| bucket
-    browser <-->|"Hosted login and code exchange with PKCE"| cognito
-    cognito -->|"Validate new signups"| signup
-    browser -->|"HTTPS API + Bearer access token"| proxy
-    proxy -->|"HTTP to 127.0.0.1:8000"| api
-    api -.->|"Fetch and cache public signing keys"| cognito
-    browser <-->|"Live Forum events over WSS"| proxy
-    api -->|"Read/write Forum records"| forumdb
-    api -->|"User timetable, keyed by Cognito sub"| timetables
-    api -->|"Validate selected lesson groups"| nusmods
-    browser -.->|"Current timetable fetches directly"| nusmods
-    scheduler -->|"Invoke; job checks whether ingestion is due"| ingest
-    ingest -->|"Fetch module and venue data"| nusmods
-    ingest -->|"Publish lecture JSON snapshots"| bucket
-
-    classDef client fill:#eff6ff,stroke:#2563eb,color:#172554
-    classDef compute fill:#fff7ed,stroke:#ea580c,color:#431407
-    classDef storage fill:#f0fdf4,stroke:#16a34a,color:#14532d
-    classDef identity fill:#faf5ff,stroke:#9333ea,color:#3b0764
-    class browser,nusmods client
-    class proxy,api,ingest,signup compute
-    class bucket,cloudfront,forumdb storage
-    class bucket,cloudfront,timetables storage
-    class cognito identity
+    browser[Browser: React] --> cdn[CloudFront]
+    cdn --> bucket[(Private S3: app and lectures)]
+    browser <--> cognito[Cognito hosted login]
+    cognito --> signup[Pre-signup Lambda]
+    browser <-->|HTTPS and WSS| api[FastAPI: one instance and worker]
+    api --> tables[(DynamoDB: Forum and timetables)]
+    api -.->|Public signing keys| cognito
+    browser --> nusmods[Public NUSMods API]
+    api -->|Validate timetable selections| nusmods
+    schedule[EventBridge Scheduler] --> ingest[Ingestion Lambda]
+    ingest --> nusmods
+    ingest --> bucket
 ```
-
-### Infrastructure stacks
-
-Each `infra/` template is its own stack, named `lecture-kaki-<part>-<env>`.
-Deploy hosting before ingestion; delete ingestion first. The user pool, web bucket and timetable table are retained on stack deletion. Lambda packages go to a separate private artifact bucket.
-
-| Stack       | Template               | Owns                                                                         | Status         |
-| ----------- | ---------------------- | ---------------------------------------------------------------------------- | -------------- |
-| `auth`      | `infra/auth.yaml`      | Cognito user pool, hosted login, pre-signup Lambda                           | Template ready |
-| `hosting`   | `infra/hosting.yaml`   | Web bucket (exports name and ARN), CloudFront with OAC, app routing function | Template ready |
-| `ingest`    | `infra/ingest.yaml`    | Ingestion Lambda, schedule, logs, failure alarm                              | Template ready |
-| `timetable` | `infra/timetable.yaml` | DynamoDB table for each user's timetable                                     | Template ready |
-| `api`       | —                      | EC2, Caddy, FastAPI container                                                | Not started    |
-
-### Website hosting
-
-CloudFront reads the private bucket through OAC and caches by each object's
-`Cache-Control` header (minimum TTL 0). A viewer-request function serves
-`index.html` for extensionless paths such as `/auth/callback` and for `/forum/*`
-room links, including IDs containing periods; `/assets/*` and
-`/lectures/*` are passed through, so missing files stay errors. Responses carry
-the managed security headers policy.
-
-Upload builds with `assets/` as `immutable` and the rest as `no-cache`, and
-exclude `lectures/*` so `--delete` keeps lecture data; see
-[personal AWS setup](aws-dev-setup.md#6-deploy-the-frontend).
-
-### Login and API access
-
-1. React redirects to Cognito hosted login (authorization code + S256 PKCE).
-2. Cognito redirects to `/auth/callback`; React exchanges the code for tokens.
-3. React calls the API with `Authorization: Bearer <access_token>`.
-4. `get_current_user` validates the token and returns the Cognito `sub` as the
-   user ID.
-
-Token validation uses `AWS_REGION`, `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`
-and `COGNITO_DOMAIN`, without a client secret. Forum also needs `DYNAMODB_TABLE`
-and AWS credentials with table access. `FRONTEND_ORIGINS` controls HTTP and
-WebSocket origins; see [Forum setup](forum.md).
-Authentication uses public [Cognito configuration](authentication.md#local-configuration). Timetable storage requires an AWS identity with table access; see [backend setup](../backend/README.md#personal-timetables).
-
-### Still to build
-
-- **EC2 API:** stable DNS name, Caddy for HTTPS, backend bound to
-  `127.0.0.1:8000`, auto-restart, CloudWatch logs and health monitoring.
-- **Hosted configuration:** set the website/API origins and register exact
-  frontend callback/logout URLs. Forum implements CORS and browser login,
-  callback handling, refresh and logout.
-- **Frontend login:** callback, refresh and logout; register the exact callback
-  and logout URLs in Cognito.
-- **Lecture discovery P2–P4:** interest topics, timetable-aware suggestions and
-  login features; see [lecture discovery](lecture-discovery.md).
-
-The timetable API and table template are implemented. Connecting browser-local timetables to account storage remains unfinished.
-
-References: [authentication](authentication.md), [lecture data](lecture-data.md),
-[personal AWS setup](aws-dev-setup.md),
-[CloudFront OAC](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html),
-[Cognito JWT verification](https://docs.aws.amazon.com/cognito/latest/developerguide/amazon-cognito-user-pools-using-tokens-verifying-a-jwt.html).
 
 ## Repository structure
 
 ```text
-frontend/src/features/
-  discovery/              Lecture discovery page; filters static /lectures/ data
-  timetable/              Timetable UI, NUSMods import, clash detection, storage
-  forum/                  Discussions, browser login, history and live updates
-backend/
-  app/                    FastAPI application and API modules
-  jobs/lecture_ingest/    Scheduled ingestion job (own Lambda; handler.py entry)
-  lambdas/pre_signup/     Cognito signup trigger (own Lambda)
-  scripts/                Local ingestion and Lambda packaging
-  tests/                  API, trigger and job tests
-infra/                    CloudFormation templates
+.
+├── frontend/
+│   └── src/features/        # Discovery, timetable and Forum UI
+├── backend/
+│   ├── app/
+│   │   ├── main.py         # CORS, error handling and router registration
+│   │   └── modules/        # Auth, Forum and timetable schemas, rules and data access
+│   ├── jobs/lecture_ingest/ # NUSMods fetching, calendar expansion and publication
+│   ├── lambdas/pre_signup/ # NUS email signup validation
+│   ├── scripts/            # Local ingestion and Lambda packaging
+│   └── tests/              # Backend and ingestion tests
+├── infra/                  # Auth, hosting, ingestion and timetable CloudFormation
+├── scripts/smoke_test.py    # API smoke checks
+├── docs/                   # Development, architecture and deployment guides
+├── .github/workflows/      # CI checks and container builds
+└── compose.yaml            # Local services and test containers
 ```
 
-```text
-backend/app/
-  main.py                 App composition; registers module routers
-  health.py               Health endpoint
-  modules/auth/
-    __init__.py           Public interface: router, CurrentUser, get_current_user
-    api.py                Routes
-    dependencies.py       Token validation and signing-key cache
-    schemas.py            Data contracts
-  modules/forum/          Forum routes, rules, DynamoDB access and live rooms
-  modules/timetable/      Personal timetable routes, validation and DynamoDB storage
-```
+Add API features under `app/modules/<feature>/` and register routers in `main.py`. Modules own their data access and expose public interfaces. Jobs/triggers are excluded from the API runtime image.
 
-Add features under `app/modules/<feature>/` and register their routers in
-`main.py`. Each module owns its schemas, rules and data access; other modules use
-its public interface. Protect routes with the auth dependency:
+## Identity and security
 
-```python
-from app.modules.auth import CurrentUser, get_current_user
+IAM credentials authorise AWS operations; Cognito accounts authenticate app users. Signup requires an `@u.nus.edu` address and email confirmation.
 
-def protected_operation(user: Annotated[CurrentUser, Depends(get_current_user)]):
-    return {"user_id": user.user_id}
-```
+The [browser flow](../frontend/src/features/forum/auth.ts) uses authorization code flow, S256 PKCE and OAuth `state`. Tokens stay in `sessionStorage`; a non-secret cookie remembers prior login and a `localStorage` revision coordinates logout.
 
-Lambdas and jobs are in the backend test image but excluded from the API runtime
-image. `scripts/package_ingest.py` builds the ingestion ZIP;
-`scripts/ingest_local.py` runs the same handler against in-memory S3.
+Protect routes with `Depends(get_current_user)` from `app.modules.auth`. The [validator](../backend/app/modules/auth/dependencies.py) checks RS256 signature, expiry, issuer, `client_id`, `token_use=access` and non-empty `sub`. Use that verified `sub` as the user/author ID and enforce ownership separately. ID tokens are not API credentials. Invalid/missing tokens return `401`; unavailable auth configuration/signing keys return `503`.
+
+The [auth template](../infra/auth.yaml) sets access tokens to 15 minutes and refresh tokens to 30 days. Logout clears local tokens, attempts refresh-token revocation and ends the hosted session; issued access tokens can still pass JWT validation until expiry.
+
+## Lecture snapshots and room identity
+
+Read `/lectures/current.json`, then use its `path` for `index.json`, `modules.json` and `weeks/<label>.json` or `days/<date>.json`. The [publisher](../backend/jobs/lecture_ingest/publish.py) completes the snapshot before switching the pointer. Snapshots use `public, max-age=86400, immutable`; the pointer uses `no-cache`. Empty data and same-semester session counts below half the previous run are rejected.
+
+Fields are defined by the [transformer](../backend/jobs/lecture_ingest/transform.py) and [frontend types](../frontend/src/features/discovery/types.ts). Coordinate format changes across producer, consumers and tests. Unknown capacity uses `size=0`; online or unmapped venues use `building=null`.
+
+Only `Lecture` lessons are published, excluding NUS-ISS courses. Session dates and lesson times use Singapore time; `generatedAt` is a UTC ISO timestamp. The [calendar](../backend/jobs/lecture_ingest/academic_calendar.py) covers AY2026/27 Semesters 1–2, holidays and early closures; extend it for later years.
+
+Session IDs are `<moduleCode>-<lessonTypeCode>-<classNo>@<date>-<HHMM>-<venue>`. Preserve class-number leading zeroes and venue slashes. A changed date, start time or venue creates a different occurrence. Forum rooms append `@<acadYear>@<semester>`; URL-encode the whole room ID. The [browser](../frontend/src/features/forum/roomCatalogue.ts) checks an exact current-catalogue match; the backend validates format, date, time and academic year.
+
+## Persistence and live updates
+
+- **Timetables:** the [UI](../frontend/src/features/timetable/TimetablePage.tsx) loads/saves a four-semester book through `/timetable/semesters` and keeps local selections. The [API](../backend/app/modules/timetable/api.py) validates selections against NUSMods. The [repository](../backend/app/modules/timetable/repository.py) stores one record per Cognito `sub`, with last-write-wins replacement. Legacy `/timetable` routes remain supported.
+- **Forum:** authenticated HTTP reads/creates messages and allows author-only deletion. Messages allow 1–500 characters and are hidden after 24 hours. Records use `ROOM#<room_id>` / `MSG#<message_id>`; DynamoDB TTL on `ttl` performs eventual cleanup. See [schemas](../backend/app/modules/forum/schemas.py) and [service](../backend/app/modules/forum/service.py).
+- **WebSockets:** request `POST /rooms/{room_id}/connection-ticket` with the Bearer access token, then connect to the returned `path` on the API's `ws://` or `wss://` origin. The path is `/rooms/{room_id}/live?ticket=...`. Posting/deletion remain authenticated HTTP operations; writes persist before broadcast. See [routes](../backend/app/modules/forum/api.py) and [client](../frontend/src/features/forum/forumSocket.ts).
+- Tickets are room-bound, single-use and valid for at most 30 seconds; hashed records use `TICKET#<hash>` / `METADATA`. Sockets expire with the access token; the client refreshes credentials/history on reconnect. The [room hub](../backend/app/modules/forum/realtime.py) requires **one API instance and one worker**. Separate APIs share history but not live events.

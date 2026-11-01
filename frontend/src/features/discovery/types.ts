@@ -1,4 +1,4 @@
-// Shapes of the static lecture snapshot; see docs/lecture-data.md.
+// Shapes of the static lecture snapshot; see docs/architecture.md.
 
 export type LecturePointer = {
   generatedAt: string
