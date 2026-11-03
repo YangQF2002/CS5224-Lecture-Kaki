@@ -6,11 +6,11 @@ const API_BASE = (
 
 export class ForumApiError extends Error {
   status: number
-  constructor(status: number) {
+  constructor(status: number, detail?: string) {
     super(
       status === 401
         ? 'Sign in to continue.'
-        : `Forum request failed (${status}).`,
+        : (detail ?? `Forum request failed (${status}).`),
     )
     this.status = status
   }
@@ -30,6 +30,7 @@ export interface MessageOut {
   content: string
   posted_at: string
   expires_at: string
+  attachment?: { filename: string; size: number } | null
 }
 
 export interface MessagePage {
@@ -37,12 +38,13 @@ export interface MessagePage {
   next_cursor: string | null
 }
 
-async function apiFetch(
+export async function apiFetch(
   path: string,
   getToken: () => Promise<string>,
   init: RequestInit = {},
 ): Promise<Response> {
   const token = await getToken()
+  init.signal?.throwIfAborted()
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
@@ -51,7 +53,15 @@ async function apiFetch(
       ...(init.headers ?? {}),
     },
   })
-  if (!res.ok) throw new ForumApiError(res.status)
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as {
+      detail?: unknown
+    } | null
+    throw new ForumApiError(
+      res.status,
+      typeof body?.detail === 'string' ? body.detail : undefined,
+    )
+  }
   return res
 }
 
@@ -74,11 +84,20 @@ export async function postMessage(
   roomId: string,
   content: string,
   getToken: () => Promise<string>,
+  attachmentId?: string,
+  signal?: AbortSignal,
 ): Promise<MessageOut> {
   const res = await apiFetch(
     `/rooms/${encodeURIComponent(roomId)}/messages`,
     getToken,
-    { method: 'POST', body: JSON.stringify({ content }) },
+    {
+      method: 'POST',
+      signal,
+      body: JSON.stringify({
+        content,
+        ...(attachmentId ? { attachment_id: attachmentId } : {}),
+      }),
+    },
   )
   return res.json() as Promise<MessageOut>
 }

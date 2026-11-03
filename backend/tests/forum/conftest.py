@@ -4,6 +4,7 @@ import json
 from io import BytesIO
 from time import time
 from types import SimpleNamespace
+from urllib.parse import parse_qs, quote, urlparse
 
 import boto3
 import jwt
@@ -11,9 +12,11 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from moto import mock_aws
+from pypdf import PdfWriter
 
 from app.main import app
 from app.modules.auth.dependencies import _get_jwks_client
+from app.modules.forum import attachment_store as store
 from app.modules.forum import repository
 
 REGION = "ap-southeast-1"
@@ -95,3 +98,61 @@ def client(table, signing_key, monkeypatch):
             yield test_client
     finally:
         _get_jwks_client.cache_clear()
+
+
+@pytest.fixture
+def pdf(client, auth, monkeypatch):
+    """A private versioned PDF upload shared by HTTP and live-delivery tests."""
+    monkeypatch.setenv("FORUM_ATTACHMENTS_BUCKET", "forum-pdfs-test")
+    bucket = boto3.client("s3", region_name=REGION)
+    bucket.create_bucket(
+        Bucket="forum-pdfs-test",
+        CreateBucketConfiguration={"LocationConstraint": REGION},
+    )
+    bucket.put_bucket_versioning(
+        Bucket="forum-pdfs-test", VersioningConfiguration={"Status": "Enabled"}
+    )
+    room = "QT5101-LEC-1@2026-10-20-1600-CQT/SR0514@2026-2027@1"
+    base = f"/rooms/{quote(room, safe='')}"
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    data = BytesIO()
+    writer.write(data)
+    example = data.getvalue()
+
+    def upload(data=None, content_type="application/pdf"):
+        data = example if data is None else data
+        response = client.post(
+            f"{base}/attachment-uploads",
+            json={"filename": "lecture.pdf", "size": len(data)},
+            headers=auth(),
+        )
+        assert response.status_code == 201, response.text
+        item = response.json()
+        signed = parse_qs(urlparse(item["url"]).query)
+        assert "content-length" in signed["X-Amz-SignedHeaders"][0]
+        assert "if-none-match" in signed["X-Amz-SignedHeaders"][0]
+        assert item["headers"] == {
+            "Content-Type": "application/pdf",
+            "If-None-Match": "*",
+        }
+        key = store.get_upload(item["upload_id"])["key"]
+        result = bucket.put_object(
+            Bucket="forum-pdfs-test",
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+            IfNoneMatch="*",
+        )
+        return item["upload_id"], key, result["VersionId"]
+
+    def post(upload_id, user="student-a"):
+        return client.post(
+            f"{base}/messages",
+            json={"content": "", "attachment_id": upload_id},
+            headers=auth(user),
+        )
+
+    return SimpleNamespace(
+        room=room, base=base, bucket=bucket, data=example, upload=upload, post=post
+    )

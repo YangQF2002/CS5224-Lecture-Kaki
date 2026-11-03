@@ -3,16 +3,18 @@ import { Link, useParams } from 'react-router'
 // prettier-ignore
 import { confirmSignedIn, getAccessToken, signOut, startSignIn, subscribeToSignOut, tryAutomaticSignIn } from './auth.ts'
 // prettier-ignore
-import { deleteMessage, ForumApiError, getCurrentUser, getMessages, needsSignIn, postMessage, type MessageOut } from './forumApi.ts'
+import { deleteMessage, ForumApiError, getCurrentUser, getMessages, needsSignIn, type MessageOut } from './forumApi.ts'
 // prettier-ignore
 import { subscribeToRoom, type LiveStatus, type RoomEvent } from './forumSocket.ts'
 // prettier-ignore
 import { lectureDate, lectureTime, resolveRoom, RoomNotFound, roomPath, type LectureRoom } from './roomCatalogue.ts'
-// prettier-ignore
-import { clearRoomSession, forgetRoom, readDraft, rememberRoom, saveDraft } from './roomSession.ts'
+import { clearRoomSession, forgetRoom, rememberRoom } from './roomSession.ts'
+import ForumComposer from './ForumComposer.tsx'
+import ForumLayout from './ForumLayout.tsx'
+import PdfAttachment from './PdfAttachment.tsx'
+import { downloadPdf } from './forumPdf.ts'
 import './forum.css'
 
-const MAX_CONTENT = 500
 const LIVE_LABELS: Record<LiveStatus, string> = {
   connecting: 'Connecting live updates…',
   connected: 'Live updates connected',
@@ -67,21 +69,14 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
   const [retryCount, setRetryCount] = useState(0)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [sendError, setSendError] = useState('')
-  const [content, setContent] = useState(() => readDraft(roomId))
   const [shareStatus, setShareStatus] = useState('')
-  const [sending, setSending] = useState(false)
+  const downloadController = useRef<AbortController | null>(null)
   const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting')
   const bottomRef = useRef<HTMLDivElement>(null)
-  const sendingRef = useRef(false)
   const deletedIds = useRef(new Set<string>())
   const historyVersion = useRef(0)
   const interactionVersion = useRef(0)
   const pendingHistory = useRef(new Set<Map<string, MessageOut>>())
-  const characterCount = Array.from(content).length
-  const composerDisabled =
-    sending || loading || !!loadError || unauthenticated || !currentUserId
-  const canSend =
-    !composerDisabled && !!content.trim() && characterCount <= MAX_CONTENT
   const discussionLink = `${location.origin}${roomPath(roomId)}`
 
   function addMessage(message: MessageOut) {
@@ -102,6 +97,7 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
   useEffect(
     () => () => {
       interactionVersion.current += 1
+      downloadController.current?.abort()
     },
     [],
   )
@@ -117,7 +113,7 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
       interactionVersion.current += 1
       clearRoomSession()
       setSendError('')
-      setContent('')
+      downloadController.current?.abort()
       stopSocket?.()
       setMessages([])
       setCurrentUserId(null)
@@ -251,32 +247,6 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
     }
   }
 
-  async function handleSend() {
-    if (!canSend || sendingRef.current) return
-    const version = interactionVersion.current
-    sendingRef.current = true
-    setSending(true)
-    setSendError('')
-    try {
-      const message = await postMessage(roomId, content.trim(), getAccessToken)
-      if (version !== interactionVersion.current) return
-      addMessage(message)
-      if (readDraft(roomId) === content) saveDraft(roomId, '')
-      setContent('')
-      bottomRef.current?.scrollIntoView?.({
-        behavior: 'smooth',
-        block: 'nearest',
-      })
-    } catch (error) {
-      if (version !== interactionVersion.current) return
-      if (needsSignIn(error)) setUnauthenticated(true)
-      else setSendError('Failed to send. Your draft is kept; please try again.')
-    } finally {
-      sendingRef.current = false
-      setSending(false)
-    }
-  }
-
   async function handleDelete(messageId: string) {
     const version = interactionVersion.current
     try {
@@ -289,6 +259,32 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
       else if (error instanceof ForumApiError && error.status === 404) {
         removeMessage(messageId)
       } else setSendError('Failed to delete message. Please try again.')
+    }
+  }
+
+  async function handleDownload(message: MessageOut) {
+    if (!message.attachment) return
+    const version = interactionVersion.current
+    downloadController.current?.abort()
+    const controller = new AbortController()
+    downloadController.current = controller
+    setSendError('')
+    try {
+      await downloadPdf(
+        roomId,
+        message.message_id,
+        message.attachment.filename,
+        getAccessToken,
+        controller.signal,
+      )
+    } catch (error) {
+      if (version !== interactionVersion.current || controller.signal.aborted)
+        return
+      if (needsSignIn(error)) setUnauthenticated(true)
+      else
+        setSendError(
+          error instanceof Error ? error.message : 'Unable to download PDF.',
+        )
     }
   }
 
@@ -321,7 +317,7 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
 
   if (unauthenticated)
     return (
-      <main className="forum-page">
+      <ForumLayout>
         <DiscussionHeading room={room} />
         <p role={restoringSignIn ? 'status' : undefined}>
           {restoringSignIn
@@ -332,11 +328,11 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
           Sign in with NUS email
         </button>
         {sendError && <p role="alert">{sendError}</p>}
-      </main>
+      </ForumLayout>
     )
 
   return (
-    <main className="forum-page">
+    <ForumLayout onReopen={loadError ? refresh : undefined}>
       <DiscussionHeading room={room} />
       <div className="forum-share">
         <button className="secondary" onClick={() => void copyLink()}>
@@ -419,52 +415,38 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
                     </button>
                   )}
                 </div>
-                <p className="message-content">{message.content}</p>
+                {message.content && (
+                  <p className="message-content">{message.content}</p>
+                )}
+                {message.attachment && (
+                  <PdfAttachment
+                    filename={message.attachment.filename}
+                    size={message.attachment.size}
+                    action="download"
+                    onAction={() => void handleDownload(message)}
+                  />
+                )}
               </article>
             )
           })}
         </div>
       )}
       <div ref={bottomRef} />
-      <section className="panel composer">
-        <label htmlFor="forum-message">Your message</label>
-        <textarea
-          id="forum-message"
-          value={content}
-          placeholder="Write a message…"
-          onChange={(event) => {
-            setContent(event.target.value)
-            saveDraft(roomId, event.target.value)
-            setSendError('')
-          }}
-          onKeyDown={(event) => {
-            if (
-              !event.nativeEvent.isComposing &&
-              event.key === 'Enter' &&
-              (event.metaKey || event.ctrlKey)
-            ) {
-              event.preventDefault()
-              void handleSend()
-            }
-          }}
-          disabled={composerDisabled}
-        />
-        <p className="forum-compose-hint">
-          Ctrl/Cmd + Enter to send. Your unsent draft stays in this tab.
-        </p>
-        <div className="composer-footer">
-          <span
-            className={`char-count${characterCount > MAX_CONTENT ? ' over' : ''}`}
-          >
-            {characterCount}/{MAX_CONTENT}
-          </span>
-          <button onClick={() => void handleSend()} disabled={!canSend}>
-            {sending ? 'Sending…' : 'Send'}
-          </button>
-        </div>
-        {sendError && <p role="alert">{sendError}</p>}
-      </section>
-    </main>
+      <ForumComposer
+        roomId={roomId}
+        disabled={loading || !!loadError || !currentUserId}
+        error={sendError}
+        onError={setSendError}
+        onSignInRequired={() => setUnauthenticated(true)}
+        onSent={(message) => {
+          addMessage(message)
+          bottomRef.current?.scrollIntoView?.({
+            behavior: 'smooth',
+            block: 'nearest',
+          })
+        }}
+      />
+    </ForumLayout>
   )
 }
 
@@ -495,9 +477,14 @@ function ValidatedDiscussion({ roomId }: { roomId: string }) {
       cancelled = true
     }
   }, [roomId, retry])
+  function retryRoom() {
+    setError('')
+    setRetry((value) => value + 1)
+  }
+
   if (room) return <RoomDiscussion room={room} />
   return (
-    <main className="forum-page">
+    <ForumLayout onReopen={retryRoom}>
       <h1>{error ? 'Discussion unavailable' : 'Opening discussion'}</h1>
       {error ? (
         <>
@@ -505,20 +492,14 @@ function ValidatedDiscussion({ roomId }: { roomId: string }) {
           <p>
             <Link to="/forum?browse=1">Choose a lecture</Link>
           </p>
-          <button
-            className="secondary"
-            onClick={() => {
-              setError('')
-              setRetry((value) => value + 1)
-            }}
-          >
+          <button className="secondary" onClick={retryRoom}>
             Retry
           </button>
         </>
       ) : (
         <p role="status">Checking lecture details…</p>
       )}
-    </main>
+    </ForumLayout>
   )
 }
 
@@ -530,8 +511,8 @@ export default function ForumPage() {
   return roomId ? (
     <ValidatedDiscussion key={roomId} roomId={roomId} />
   ) : (
-    <main className="forum-page">
+    <ForumLayout>
       <Link to="/forum?browse=1">Choose a lecture</Link>
-    </main>
+    </ForumLayout>
   )
 }

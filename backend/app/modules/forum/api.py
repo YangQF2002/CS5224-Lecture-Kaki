@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from time import time
 from typing import Annotated
 
@@ -20,7 +21,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.modules.auth import CurrentUser, get_current_user
 
-from . import realtime, repository
+from . import attachment_store, attachments, realtime, repository
 from .schemas import ConnectionTicket, MessageIn, MessageOut, MessagePage, RoomId
 from .service import (
     collect_page,
@@ -31,6 +32,7 @@ from .service import (
 )
 
 router = APIRouter(prefix="/rooms", tags=["Forum"])
+logger = logging.getLogger(__name__)
 
 _Auth = Annotated[CurrentUser, Depends(get_current_user)]
 
@@ -42,7 +44,22 @@ async def post_message(
     user: _Auth,
 ) -> MessageOut:
     item = make_message(room_id, body.content, user.user_id)
-    await run_in_threadpool(repository.put_message, item)
+    if body.attachment_id:
+        upload = await run_in_threadpool(
+            attachments.owned_upload, room_id, body.attachment_id, user.user_id
+        )
+        attachment = await run_in_threadpool(attachments.prepare_attachment, upload)
+        if attachment is None:
+            raise HTTPException(status_code=409, detail="PDF upload is not ready")
+        item["attachment"] = attachment
+        try:
+            await run_in_threadpool(
+                attachment_store.post_with_upload, item, body.attachment_id
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+    else:
+        await run_in_threadpool(repository.put_message, item)
     message = item_to_message(item)
     await realtime.hub.publish(
         room_id, {"type": "message.created", "message": message.model_dump()}
@@ -107,6 +124,12 @@ async def delete_message(
     await realtime.hub.publish(
         room_id, {"type": "message.deleted", "message_id": message_id}
     )
+    if item.get("attachment"):
+        try:
+            await run_in_threadpool(attachment_store.delete_object, item["attachment"])
+        except repository.ForumStorageUnavailable:
+            # Access is already revoked; bucket lifecycle removes residual versions.
+            logger.warning("PDF cleanup deferred to bucket lifecycle", exc_info=True)
 
 
 @router.websocket("/{room_id:path}/live")
