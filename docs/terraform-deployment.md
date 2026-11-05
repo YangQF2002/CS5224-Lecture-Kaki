@@ -6,7 +6,7 @@ Deploys the `terraform-dev` environment from [`infra/terraform/`](../infra/terra
 
 - Terraform 1.10+, AWS CLI v2.32+, Python 3.14 and Node.js 24.
 - An AWS identity that can create IAM roles named `lecture-kaki-terraform-dev-*` (see [decisions](terraform-decisions.md#scope-and-environment)).
-- Any AWS account works. The team uses `320465872576`; in another account, also complete [step 2](#2-state-bucket-once-per-account) and choose a sign-in page name.
+- Access to the team account `320465872576`.
 
 ## 1. Sign in
 
@@ -30,11 +30,7 @@ terraform -chdir=infra/terraform/bootstrap apply
 
 ## 3. Infrastructure
 
-The Cognito sign-in page is `https://lecture-kaki-terraform-dev.auth.ap-southeast-1.amazoncognito.com` in the team account; there is nothing to set. The name before `.auth` must be unique across all AWS accounts, so another account (for example a personal test account) sets its own once in a Git-ignored file, replacing `YOURNAME` in lowercase:
-
-```bash
-echo 'cognito_domain_prefix = "lecture-kaki-YOURNAME-dev"' > infra/terraform/terraform.tfvars
-```
+The Cognito sign-in page will be `https://lecture-kaki-terraform-dev.auth.ap-southeast-1.amazoncognito.com`.
 
 Build the ingestion package, then preview and apply. `init` needs the state bucket only the first time on each machine. Review the plan's `to destroy` count before typing `yes`.
 
