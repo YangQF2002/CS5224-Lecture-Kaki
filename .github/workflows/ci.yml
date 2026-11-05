@@ -52,6 +52,19 @@ jobs:
           "$RUNNER_TEMP/cfn-lint/bin/python" -m pip install cfn-lint==1.57.2
           # Local Lambda paths are resolved during packaging.
           "$RUNNER_TEMP/cfn-lint/bin/cfn-lint" --template infra/auth.yaml infra/hosting.yaml infra/ingest.yaml infra/timetable.yaml --regions ap-southeast-1 --ignore-checks W3002
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: 1.17.1
+          terraform_wrapper: false
+      - name: Check Terraform formatting and configuration
+        run: |
+          terraform fmt -check -recursive infra/terraform
+          # validate only needs the ingestion package to exist; deploys build the real one.
+          mkdir -p build && touch build/ingest.zip
+          for dir in infra/terraform infra/terraform/bootstrap infra/terraform/github; do
+            terraform -chdir="$dir" init -backend=false -input=false
+            terraform -chdir="$dir" validate
+          done
       - name: Validate Compose configuration
         run: docker compose config --quiet
       - name: Build runtime images

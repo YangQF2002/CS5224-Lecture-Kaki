@@ -1,0 +1,145 @@
+name: Terraform deploy
+
+# Plans terraform-dev on every push to main; applying waits for approval in the dev environment.
+# Setup: docs/terraform-pipeline-setup.md. Manual steps: docs/terraform-deployment.md.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_ingest:
+        description: Publish lecture data for today's semester after applying
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# One run at a time against the same state; a newer run waits rather than cancelling.
+concurrency:
+  group: terraform-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-1
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.14"
+      - name: Build ingestion package
+        run: python backend/scripts/package_ingest.py
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: 1.17.1
+          terraform_wrapper: false
+      - name: Terraform plan
+        run: |
+          terraform -chdir=infra/terraform init -input=false
+          terraform -chdir=infra/terraform plan -input=false -out=tfplan
+      - name: Show plan in the run summary
+        run: |
+          {
+            echo '## Terraform plan'
+            echo '```'
+            terraform -chdir=infra/terraform show -no-color tfplan | tail -c 60000
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # The apply job must upload the same packages the plan was made from.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: tfplan
+          path: |
+            infra/terraform/tfplan
+            infra/terraform/build/pre_signup.zip
+            build/ingest.zip
+          retention-days: 1
+          if-no-files-found: error
+
+  apply:
+    name: Apply and deploy frontend
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Required reviewers on this environment approve the plan above before this job starts.
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: tfplan
+          path: .
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4
+        with:
+          terraform_version: 1.17.1
+          terraform_wrapper: false
+      - name: Terraform apply
+        run: |
+          terraform -chdir=infra/terraform init -input=false
+          terraform -chdir=infra/terraform apply -input=false tfplan
+      - name: Read outputs
+        run: |
+          for name in website_url web_bucket api_url cognito_domain cognito_client_id ingest_function_name; do
+            echo "$(echo "$name" | tr '[:lower:]' '[:upper:]')=$(terraform -chdir=infra/terraform output -raw "$name")" >> "$GITHUB_ENV"
+          done
+
+      - name: Publish lecture data
+        if: inputs.run_ingest
+        run: |
+          aws lambda invoke --function-name "$INGEST_FUNCTION_NAME" \
+            --cli-binary-format raw-in-base64-out --cli-read-timeout 310 \
+            --payload "{\"date\":\"$(TZ=Asia/Singapore date +%F)\"}" "$RUNNER_TEMP/ingest.json"
+          cat "$RUNNER_TEMP/ingest.json"
+          if grep -q errorMessage "$RUNNER_TEMP/ingest.json"; then exit 1; fi
+
+      # A replaced server needs 5-10 minutes to build the API and obtain its certificate.
+      - name: Wait for the API
+        run: timeout 900 bash -c 'until curl -fsS "$API_URL/health"; do sleep 15; done'
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: frontend/package.json
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          VITE_API_URL="$API_URL" \
+          VITE_COGNITO_DOMAIN="$COGNITO_DOMAIN" \
+          VITE_COGNITO_CLIENT_ID="$COGNITO_CLIENT_ID" \
+          VITE_COGNITO_REDIRECT_URI="$WEBSITE_URL/auth/callback" \
+          VITE_COGNITO_LOGOUT_URI="$WEBSITE_URL/forum" \
+          npm run build
+      # Assets first so new HTML never references missing files; keep ingested lecture data.
+      - name: Upload frontend
+        run: |
+          aws s3 sync frontend/dist/assets/ "s3://$WEB_BUCKET/assets/" --cache-control 'public, max-age=31536000, immutable'
+          aws s3 sync frontend/dist/ "s3://$WEB_BUCKET/" --delete --exclude 'assets/*' --exclude 'lectures/*' --cache-control 'no-cache'
+          echo "Deployed to $WEBSITE_URL" >> "$GITHUB_STEP_SUMMARY"

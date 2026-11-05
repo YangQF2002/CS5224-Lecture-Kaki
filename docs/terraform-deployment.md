@@ -1,6 +1,6 @@
 # Terraform deployment
 
-Deploys the `terraform-dev` environment from [`infra/terraform/`](../infra/terraform). Run every command in bash from the repository root, in order. Design choices are in [Terraform decisions](terraform-decisions.md).
+Deploys the `terraform-dev` environment from [`infra/terraform/`](../infra/terraform) by hand; the [pipeline](terraform-pipeline-setup.md) automates the same steps. Run every command in bash from the repository root, in order. Design choices are in [Terraform decisions](terraform-decisions.md).
 
 ## Prerequisites
 
