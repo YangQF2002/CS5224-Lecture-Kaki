@@ -8,8 +8,10 @@ GitHub Actions uses OIDC instead of stored AWS keys. On each run GitHub issues a
 
 The role trusts only:
 
-- jobs running on `main` of one repository, `YangQF2002/CS5224-Lecture-Kaki` by default (the automatic plan);
+- jobs running on `main` of one repository, the team's by default (the automatic plan);
 - jobs in the repository's `dev` environment (the approved apply).
+
+GitHub names the repository by owner and repository ID as well as name (its "immutable subject"), for example `repo:YangQF2002@123465999/CS5224-Lecture-Kaki@1411985002`, so a deleted and recreated repository with the same name cannot inherit the trust.
 
 It has `PowerUserAccess` plus IAM limited to roles and instance profiles named `lecture-kaki-terraform-dev-*`, and cannot change itself. It can still modify non-IAM resources anywhere in the account, so only this workflow should use it.
 
@@ -25,7 +27,20 @@ terraform -chdir=infra/terraform/github init -backend-config="bucket=lecturekaki
 terraform -chdir=infra/terraform/github plan
 ```
 
-For a fork, add `-var github_repository=<owner>/<repo>` to `plan` and `apply`.
+If your terminal does not keep `export`ed values between commands, put the profile in front of each command instead, and type the bucket name in full:
+
+```bash
+AWS_PROFILE=<admin-profile> terraform -chdir=infra/terraform/github init -backend-config="bucket=lecturekaki-tfstate-<account>"
+```
+
+For a fork or any other repository, replace `OWNER/REPO` below with its name, print its subject prefix, and save it in a Git-ignored settings file before `plan`:
+
+```bash
+gh api repos/OWNER/REPO/actions/oidc/customization/sub --jq .sub_claim_prefix
+echo 'github_subject_prefix = "PRINTED_VALUE"' > infra/terraform/github/terraform.tfvars
+```
+
+The plan's role trust rule should then show that value followed by `:ref:refs/heads/main` and `:environment:dev`. If the role already exists, the plan changes only its trust rule.
 
 The plan should add 4 resources: the GitHub OIDC provider, the deploy role and its two permission attachments. If the account already trusts GitHub, `apply` fails with `EntityAlreadyExists` for the provider; rerun with `-var create_github_oidc_provider=false` (plan then adds 3).
 
@@ -48,6 +63,14 @@ In the repository's **Settings**:
    | `AWS_DEPLOY_ROLE_ARN`   | The role ARN from step 1                                                                                     |
    | `TF_STATE_BUCKET`       | `lecturekaki-tfstate-<account>`; the team's is `lecturekaki-tfstate-320465872576`                            |
    | `COGNITO_DOMAIN_PREFIX` | The sign-in page name; the team's is `lecture-kaki-terraform-dev`, other accounts need their own unique name |
+
+   Or set them with the GitHub CLI:
+
+   ```bash
+   gh variable set AWS_DEPLOY_ROLE_ARN -R <owner>/<repo> --body "<role-arn>"
+   gh variable set TF_STATE_BUCKET -R <owner>/<repo> --body "lecturekaki-tfstate-<account>"
+   gh variable set COGNITO_DOMAIN_PREFIX -R <owner>/<repo> --body "<sign-in-name>"
+   ```
 
 ## Running it
 

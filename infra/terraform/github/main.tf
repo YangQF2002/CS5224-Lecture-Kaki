@@ -31,10 +31,17 @@ provider "aws" {
   }
 }
 
-variable "github_repository" {
+# GitHub identifies runs with owner and repository IDs ("immutable subject"), so a recreated
+# repository with the same name cannot inherit this trust. Print a repository's value with:
+#   gh api repos/OWNER/REPO/actions/oidc/customization/sub --jq .sub_claim_prefix
+variable "github_subject_prefix" {
   type        = string
-  default     = "YangQF2002/CS5224-Lecture-Kaki"
-  description = "Repository allowed to deploy, as owner/name."
+  default     = "repo:YangQF2002@123465999/CS5224-Lecture-Kaki@1411985002"
+  description = "OIDC subject prefix of the repository allowed to deploy."
+  validation {
+    condition     = can(regex("^repo:[^/@]+@[0-9]+/[^/@]+@[0-9]+$", var.github_subject_prefix))
+    error_message = "Use the form repo:OWNER@OWNER_ID/REPO@REPO_ID."
+  }
 }
 
 variable "create_github_oidc_provider" {
@@ -75,8 +82,8 @@ resource "aws_iam_role" "deploy" {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           "token.actions.githubusercontent.com:sub" = [
-            "repo:${var.github_repository}:ref:refs/heads/main",
-            "repo:${var.github_repository}:environment:dev",
+            "${var.github_subject_prefix}:ref:refs/heads/main",
+            "${var.github_subject_prefix}:environment:dev",
           ]
         }
       }
