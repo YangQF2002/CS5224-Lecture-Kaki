@@ -11,8 +11,8 @@ terraform {
   }
 
   # Kept in S3, unlike bootstrap/, so any admin can apply it from their own machine.
+  # Bucket given at init: -backend-config="bucket=lecturekaki-tfstate-<account>".
   backend "s3" {
-    bucket       = "lecturekaki-tfstate-320465872576"
     key          = "lecture-kaki/github-deploy.tfstate"
     region       = "ap-southeast-1"
     use_lockfile = true

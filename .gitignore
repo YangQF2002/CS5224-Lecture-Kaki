@@ -36,3 +36,5 @@ Thumbs.db
 *.tfstate
 *.tfstate.*
 tfplan
+# Per-machine Terraform settings, such as a personal Cognito name
+*.tfvars

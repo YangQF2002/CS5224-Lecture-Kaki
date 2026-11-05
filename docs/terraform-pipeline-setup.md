@@ -1,6 +1,6 @@
 # Terraform pipeline setup
 
-One-time configuration for the [Terraform deploy workflow](../.github/workflows/terraform-deploy.yml), which deploys the `terraform-dev` environment. Two people are needed: an **AWS admin** (can create IAM roles and OIDC providers in account `320465872576`) and a **GitHub repository admin**.
+One-time configuration for the [Terraform deploy workflow](../.github/workflows/terraform-deploy.yml), which deploys the `terraform-dev` environment. Two people are needed: an **AWS admin** (can create IAM roles and OIDC providers in the target account; the team uses `320465872576`) and a **GitHub repository admin**. The same steps work for a fork deploying to another account.
 
 ## How the pipeline signs in
 
@@ -8,7 +8,7 @@ GitHub Actions uses OIDC instead of stored AWS keys. On each run GitHub issues a
 
 The role trusts only:
 
-- jobs running on `main` of `YangQF2002/CS5224-Lecture-Kaki` (the automatic plan);
+- jobs running on `main` of one repository, `YangQF2002/CS5224-Lecture-Kaki` by default (the automatic plan);
 - jobs in the repository's `dev` environment (the approved apply).
 
 It has `PowerUserAccess` plus IAM limited to roles and instance profiles named `lecture-kaki-terraform-dev-*`, and cannot change itself. It can still modify non-IAM resources anywhere in the account, so only this workflow should use it.
@@ -20,9 +20,12 @@ Run in bash from the repository root, signed in as the admin. The state bucket f
 ```bash
 aws login --profile <admin-profile> --region ap-southeast-1
 export AWS_PROFILE=<admin-profile>
-terraform -chdir=infra/terraform/github init
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+terraform -chdir=infra/terraform/github init -backend-config="bucket=lecturekaki-tfstate-$ACCOUNT_ID"
 terraform -chdir=infra/terraform/github plan
 ```
+
+For a fork, add `-var github_repository=<owner>/<repo>` to `plan` and `apply`.
 
 The plan should add 4 resources: the GitHub OIDC provider, the deploy role and its two permission attachments. If the account already trusts GitHub, `apply` fails with `EntityAlreadyExists` for the provider; rerun with `-var create_github_oidc_provider=false` (plan then adds 3).
 
@@ -38,7 +41,13 @@ Send the printed role ARN to the GitHub admin. The 27 resources in `infra/terraf
 In the repository's **Settings**:
 
 1. **Environments → New environment**, named `dev`. Under **Deployment protection rules**, tick **Required reviewers** and add who may approve deployments. Under **Deployment branches and tags**, choose **Selected branches and tags** and add `main`.
-2. **Secrets and variables → Actions → Variables → New repository variable**: name `AWS_DEPLOY_ROLE_ARN`, value the role ARN from step 1.
+2. **Secrets and variables → Actions → Variables → New repository variable**, once for each:
+
+   | Name                    | Value                                                                                                        |
+   | ----------------------- | ------------------------------------------------------------------------------------------------------------ |
+   | `AWS_DEPLOY_ROLE_ARN`   | The role ARN from step 1                                                                                     |
+   | `TF_STATE_BUCKET`       | `lecturekaki-tfstate-<account>`; the team's is `lecturekaki-tfstate-320465872576`                            |
+   | `COGNITO_DOMAIN_PREFIX` | The sign-in page name; the team's is `lecture-kaki-terraform-dev`, other accounts need their own unique name |
 
 ## Running it
 

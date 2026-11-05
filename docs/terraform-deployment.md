@@ -6,20 +6,22 @@ Deploys the `terraform-dev` environment from [`infra/terraform/`](../infra/terra
 
 - Terraform 1.10+, AWS CLI v2.32+, Python 3.14 and Node.js 24.
 - An AWS identity that can create IAM roles named `lecture-kaki-terraform-dev-*` (see [decisions](terraform-decisions.md#scope-and-environment)).
+- Any AWS account works. The team uses `320465872576`; in another account, also complete [step 2](#2-state-bucket-once-per-account) and choose a sign-in page name.
 
 ## 1. Sign in
 
 ```bash
 aws login --profile lecture-kaki --region ap-southeast-1
 export AWS_PROFILE=lecture-kaki
-aws sts get-caller-identity
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+echo "$ACCOUNT_ID"
 ```
 
-The account must be `320465872576`. Any profile name works; keep `AWS_PROFILE` set for the remaining steps.
+Check the printed account is the one you mean to deploy to. Any profile name works; keep `AWS_PROFILE` and `ACCOUNT_ID` set for the remaining steps.
 
 ## 2. State bucket (once per account)
 
-Skip if `lecturekaki-tfstate-320465872576` already exists.
+Skip if `lecturekaki-tfstate-<account>` already exists (the team account's does).
 
 ```bash
 terraform -chdir=infra/terraform/bootstrap init
@@ -28,11 +30,17 @@ terraform -chdir=infra/terraform/bootstrap apply
 
 ## 3. Infrastructure
 
-Build the ingestion package, then preview and apply. Review the plan's `to destroy` count before typing `yes`.
+The Cognito sign-in page name must be unique across all AWS accounts. The default, `lecture-kaki-terraform-dev`, belongs to the team account; in any other account, set your own once (the file is Git-ignored):
+
+```bash
+echo 'cognito_domain_prefix = "lecture-kaki-<your-name>-dev"' > infra/terraform/terraform.tfvars
+```
+
+Build the ingestion package, then preview and apply. `init` needs the state bucket only the first time on each machine. Review the plan's `to destroy` count before typing `yes`.
 
 ```bash
 python3.14 backend/scripts/package_ingest.py
-terraform -chdir=infra/terraform init
+terraform -chdir=infra/terraform init -backend-config="bucket=lecturekaki-tfstate-$ACCOUNT_ID"
 terraform -chdir=infra/terraform plan
 terraform -chdir=infra/terraform apply
 ```

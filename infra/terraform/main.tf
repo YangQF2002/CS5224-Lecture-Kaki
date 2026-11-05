@@ -15,8 +15,8 @@ terraform {
   }
 
   # State lives in the bucket created by bootstrap/; the lock file stops two runs overlapping.
+  # The bucket differs per account, so it is given at init: -backend-config="bucket=lecturekaki-tfstate-<account>".
   backend "s3" {
-    bucket       = "lecturekaki-tfstate-320465872576"
     key          = "lecture-kaki/terraform-dev.tfstate"
     region       = "ap-southeast-1"
     use_lockfile = true
@@ -40,6 +40,16 @@ variable "env" {
   type        = string
   default     = "terraform-dev"
   description = "Environment name included in every resource name."
+}
+
+variable "cognito_domain_prefix" {
+  type        = string
+  default     = "lecture-kaki-terraform-dev"
+  description = "Hosted sign-in page name; unique across all AWS accounts in the region."
+  validation {
+    condition     = can(regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", var.cognito_domain_prefix))
+    error_message = "Use 1-63 lowercase letters, digits or inner hyphens."
+  }
 }
 
 variable "alert_email" {

@@ -24,6 +24,8 @@ concurrency:
 env:
   AWS_REGION: ap-southeast-1
   TF_IN_AUTOMATION: "true"
+  # Account-specific values; see docs/terraform-pipeline-setup.md.
+  TF_VAR_cognito_domain_prefix: ${{ vars.COGNITO_DOMAIN_PREFIX }}
 
 jobs:
   plan:
@@ -52,7 +54,7 @@ jobs:
           terraform_wrapper: false
       - name: Terraform plan
         run: |
-          terraform -chdir=infra/terraform init -input=false
+          terraform -chdir=infra/terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
           terraform -chdir=infra/terraform plan -input=false -out=tfplan
       - name: Show plan in the run summary
         run: |
@@ -101,7 +103,7 @@ jobs:
           terraform_wrapper: false
       - name: Terraform apply
         run: |
-          terraform -chdir=infra/terraform init -input=false
+          terraform -chdir=infra/terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
           terraform -chdir=infra/terraform apply -input=false tfplan
       - name: Read outputs
         run: |
