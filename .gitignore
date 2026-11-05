@@ -30,3 +30,8 @@ Thumbs.db
 # IDEs
 .vscode/
 .cmd.txt
+
+# Terraform working files; commit .terraform.lock.hcl
+.terraform/
+*.tfstate
+*.tfstate.*
