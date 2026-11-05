@@ -21,7 +21,7 @@ Check the printed account is the one you mean to deploy to. Any profile name wor
 
 ## 2. State bucket (once per account)
 
-Skip if `lecturekaki-tfstate-<account>` already exists (the team account's does).
+Skip if `lecturekaki-tfstate-ACCOUNT_NUMBER` already exists (the team account's does).
 
 ```bash
 terraform -chdir=infra/terraform/bootstrap init
@@ -30,10 +30,10 @@ terraform -chdir=infra/terraform/bootstrap apply
 
 ## 3. Infrastructure
 
-The Cognito sign-in page name must be unique across all AWS accounts. The default, `lecture-kaki-terraform-dev`, belongs to the team account; in any other account, set your own once (the file is Git-ignored):
+The Cognito sign-in page is `https://lecture-kaki-terraform-dev.auth.ap-southeast-1.amazoncognito.com` in the team account; there is nothing to set. The name before `.auth` must be unique across all AWS accounts, so another account (for example a personal test account) sets its own once in a Git-ignored file, replacing `YOURNAME` in lowercase:
 
 ```bash
-echo 'cognito_domain_prefix = "lecture-kaki-<your-name>-dev"' > infra/terraform/terraform.tfvars
+echo 'cognito_domain_prefix = "lecture-kaki-YOURNAME-dev"' > infra/terraform/terraform.tfvars
 ```
 
 Build the ingestion package, then preview and apply. `init` needs the state bucket only the first time on each machine. Review the plan's `to destroy` count before typing `yes`.
@@ -112,7 +112,7 @@ Open the website and check lecture discovery, sign-up with an `@u.nus.edu` email
 | API code                     | Set `source_revision` to the new full commit SHA in `infra/terraform/api.tf`, then 1, 3, 5. The server is replaced, briefly dropping live Forum connections. |
 | Ingestion code               | 1, 3 (the package is rebuilt), optionally 4                                                                                                                  |
 | Frontend code                | 1, the output block in 3, 6                                                                                                                                  |
-| Failure alert email          | `terraform -chdir=infra/terraform apply -var 'alert_email=<address>'`, then confirm the email from AWS                                                       |
+| Failure alert email          | `terraform -chdir=infra/terraform apply -var 'alert_email=you@example.com'`, then confirm the email from AWS                                                 |
 
 ### API server replacement
 
