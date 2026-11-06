@@ -127,14 +127,6 @@ resource "aws_sns_topic" "alerts" {
   name = "lecturekaki-${var.env}-alerts"
 }
 
-# Created only once alert_email is set; confirm the email AWS sends.
-resource "aws_sns_topic_subscription" "alert_email" {
-  count     = var.alert_email == "" ? 0 : 1
-  topic_arn = aws_sns_topic.alerts.arn
-  protocol  = "email"
-  endpoint  = var.alert_email
-}
-
 resource "aws_cloudwatch_metric_alarm" "ingest_errors" {
   alarm_name          = "lecturekaki-${var.env}-ingest-errors"
   alarm_description   = "Ingestion failed; check the function logs and current snapshot."

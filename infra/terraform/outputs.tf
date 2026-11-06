@@ -1,7 +1,7 @@
 # Values printed after apply and read later by the frontend upload.
 
 output "website_url" {
-  value = "https://${aws_cloudfront_distribution.web.domain_name}"
+  value = local.website_url
 }
 
 output "web_bucket" {
@@ -9,15 +9,15 @@ output "web_bucket" {
 }
 
 output "cognito_user_pool_id" {
-  value = aws_cognito_user_pool.main.id
+  value = var.existing_cognito_user_pool_id
 }
 
 output "cognito_client_id" {
-  value = aws_cognito_user_pool_client.web.id
+  value = var.existing_cognito_client_id
 }
 
 output "cognito_domain" {
-  value = "https://${aws_cognito_user_pool_domain.main.domain}.auth.ap-southeast-1.amazoncognito.com"
+  value = var.existing_cognito_domain
 }
 
 output "ingest_function_name" {

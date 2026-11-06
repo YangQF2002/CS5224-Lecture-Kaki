@@ -1,5 +1,17 @@
 # Tables the API reads and writes. Settings match backend/app/modules/*/repository.py.
 
+# Existing application data remains managed by its CloudFormation stacks.
+data "aws_dynamodb_table" "existing_timetable" {
+  name = "lecture-kaki-timetables-dev"
+}
+
+data "aws_dynamodb_table" "existing_forum" {
+  name = "lecturekaki-dev-forum"
+}
+
+# These empty tables already exist in the partial Terraform state. Retain them
+# until the team explicitly decides how to clean up unused resources.
+
 # One saved timetable book per Cognito user.
 resource "aws_dynamodb_table" "timetable" {
   name         = "lecture-kaki-timetables-${var.env}"

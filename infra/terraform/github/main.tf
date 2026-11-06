@@ -1,5 +1,5 @@
 # Lets GitHub Actions in this repository sign in to AWS without stored keys (OIDC).
-# An admin with IAM permissions applies this once; see docs/terraform-pipeline-setup.md.
+# An admin with IAM permissions applies this once; see docs/deployment.md.
 
 terraform {
   required_version = ">= 1.10"

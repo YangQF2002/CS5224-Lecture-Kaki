@@ -7,11 +7,6 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
-    # Zips Lambda source folders before upload.
-    archive = {
-      source  = "hashicorp/archive"
-      version = "~> 2.7"
-    }
   }
 
   # State lives in the bucket created by bootstrap/; the lock file stops two runs overlapping.
@@ -40,20 +35,4 @@ variable "env" {
   type        = string
   default     = "terraform-dev"
   description = "Environment name included in every resource name."
-}
-
-variable "cognito_domain_prefix" {
-  type        = string
-  default     = "lecture-kaki-terraform-dev"
-  description = "Hosted sign-in page name; unique across all AWS accounts in the region."
-  validation {
-    condition     = can(regex("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", var.cognito_domain_prefix))
-    error_message = "Use 1-63 lowercase letters, digits or inner hyphens."
-  }
-}
-
-variable "alert_email" {
-  type        = string
-  default     = ""
-  description = "Email for ingestion failure alerts; leave empty for none."
 }

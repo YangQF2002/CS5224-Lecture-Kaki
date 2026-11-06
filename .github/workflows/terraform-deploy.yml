@@ -1,7 +1,7 @@
 name: Terraform deploy
 
 # Plans terraform-dev on every push to main; applying waits for approval in the dev environment.
-# Setup: docs/terraform-pipeline-setup.md. Manual steps: docs/terraform-deployment.md.
+# Setup and manual steps: docs/deployment.md.
 
 on:
   push:
@@ -24,8 +24,6 @@ concurrency:
 env:
   AWS_REGION: ap-southeast-1
   TF_IN_AUTOMATION: "true"
-  # Account-specific values; see docs/terraform-pipeline-setup.md.
-  TF_VAR_cognito_domain_prefix: ${{ vars.COGNITO_DOMAIN_PREFIX }}
 
 jobs:
   plan:
@@ -39,6 +37,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Select API revision
+        run: |
+          revision=$(git log -1 --format=%H -- backend)
+          test -n "$revision"
+          echo "TF_VAR_source_revision=$revision" >> "$GITHUB_ENV"
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.14"
@@ -70,7 +74,6 @@ jobs:
           name: tfplan
           path: |
             infra/terraform/tfplan
-            infra/terraform/build/pre_signup.zip
             build/ingest.zip
           retention-days: 1
           if-no-files-found: error

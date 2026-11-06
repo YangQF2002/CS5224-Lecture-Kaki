@@ -4,7 +4,7 @@
 
 variable "source_revision" {
   type        = string
-  default     = "a38f3301647bb8296e107d046ba143bb70182e95"
+  default     = "f19e13c3461dc07965a14b735f1fb095dc33fa4b"
   description = "Full commit SHA of the public repository the API is built from."
   validation {
     condition     = can(regex("^[a-f0-9]{40}$", var.source_revision))
@@ -105,12 +105,12 @@ resource "aws_iam_role_policy" "api_tables" {
       {
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Query"]
-        Resource = aws_dynamodb_table.forum.arn
+        Resource = data.aws_dynamodb_table.existing_forum.arn
       },
       {
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
-        Resource = aws_dynamodb_table.timetable.arn
+        Resource = data.aws_dynamodb_table.existing_timetable.arn
       },
     ]
   })
@@ -153,7 +153,34 @@ resource "aws_instance" "api" {
   user_data                   = <<-EOT
     #!/bin/bash
     set -euxo pipefail
-    dnf install -y docker git
+    dnf install -y docker git e2fsprogs
+    # Attachment follows instance creation; identify the disk by EBS ID, not NVMe order.
+    CERT_DEVICE=''
+    for attempt in $(seq 1 120); do
+      CERT_DEVICE=$(lsblk -dnpo NAME,SERIAL | awk '$2 == "${replace(aws_ebs_volume.caddy.id, "-", "")}" {print $1}')
+      if test -b "$CERT_DEVICE"; then break; fi
+      sleep 5
+    done
+    test -b "$CERT_DEVICE"
+    if ! blkid "$CERT_DEVICE" >/dev/null; then
+      test -z "$(wipefs --noheadings "$CERT_DEVICE")"
+      mkfs.ext4 "$CERT_DEVICE"
+    fi
+    test "$(blkid -s TYPE -o value "$CERT_DEVICE")" = ext4
+    mkdir -p /var/lib/lecture-kaki-caddy
+    CERT_UUID=$(blkid -s UUID -o value "$CERT_DEVICE")
+    printf 'UUID=%s /var/lib/lecture-kaki-caddy ext4 defaults,nofail,x-systemd.device-timeout=300 0 2\n' "$CERT_UUID" >> /etc/fstab
+    mount /var/lib/lecture-kaki-caddy
+    chmod 700 /var/lib/lecture-kaki-caddy
+    # Keep Docker stopped if certificate storage is missing after a reboot.
+    mkdir -p /etc/systemd/system/docker.service.d
+    cat > /etc/systemd/system/docker.service.d/caddy-storage.conf <<'EOF'
+    [Unit]
+    RequiresMountsFor=/var/lib/lecture-kaki-caddy
+    [Service]
+    ExecStartPre=/usr/bin/mountpoint -q /var/lib/lecture-kaki-caddy
+    EOF
+    systemctl daemon-reload
     systemctl enable --now docker
     # Swap lets the 1 GB instance finish the image build.
     fallocate -l 2G /swapfile
@@ -167,11 +194,11 @@ resource "aws_instance" "api" {
     docker build -t lecture-kaki-api:${var.source_revision} /opt/lecture-kaki/backend
     cat > /opt/lecture-kaki/api.env <<'EOF'
     AWS_REGION=ap-southeast-1
-    COGNITO_USER_POOL_ID=${aws_cognito_user_pool.main.id}
-    COGNITO_CLIENT_ID=${aws_cognito_user_pool_client.web.id}
-    COGNITO_DOMAIN=https://${aws_cognito_user_pool_domain.main.domain}.auth.ap-southeast-1.amazoncognito.com
-    DYNAMODB_TABLE=${aws_dynamodb_table.forum.name}
-    TIMETABLE_TABLE_NAME=${aws_dynamodb_table.timetable.name}
+    COGNITO_USER_POOL_ID=${var.existing_cognito_user_pool_id}
+    COGNITO_CLIENT_ID=${var.existing_cognito_client_id}
+    COGNITO_DOMAIN=${var.existing_cognito_domain}
+    DYNAMODB_TABLE=${data.aws_dynamodb_table.existing_forum.name}
+    TIMETABLE_TABLE_NAME=${data.aws_dynamodb_table.existing_timetable.name}
     FRONTEND_ORIGINS=${local.website_url}
     EOF
     chmod 600 /opt/lecture-kaki/api.env
@@ -189,7 +216,7 @@ resource "aws_instance" "api" {
     }
     EOF
     docker run -d --name lecture-kaki-api --restart unless-stopped --network host --env-file /opt/lecture-kaki/api.env lecture-kaki-api:${var.source_revision} uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-proxy-headers --workers 1
-    docker run -d --name lecture-kaki-caddy --restart unless-stopped --network host -v /opt/lecture-kaki/Caddyfile:/etc/caddy/Caddyfile:ro -v lecture-kaki-caddy-data:/data -v lecture-kaki-caddy-config:/config caddy:2.11.4@sha256:0c994536bddb66445885237f1a5dcc1916bccea922661c76b4e9fc24061f9b52
+    docker run -d --name lecture-kaki-caddy --restart unless-stopped --network host -v /opt/lecture-kaki/Caddyfile:/etc/caddy/Caddyfile:ro -v /var/lib/lecture-kaki-caddy:/data -v lecture-kaki-caddy-config:/config caddy:2.11.4@sha256:0c994536bddb66445885237f1a5dcc1916bccea922661c76b4e9fc24061f9b52
   EOT
 
   # A newer Amazon Linux image must not replace a running server.
