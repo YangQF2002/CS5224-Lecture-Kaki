@@ -49,6 +49,7 @@ def item_to_message(item: dict) -> MessageOut:
         content=item["content"],
         posted_at=item["posted_at"],
         expires_at=item["expires_at"],
+        attachment=item.get("attachment"),
     )
 
 
