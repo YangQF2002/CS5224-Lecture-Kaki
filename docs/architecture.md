@@ -1,6 +1,6 @@
 # Architecture
 
-React/TypeScript runs in the browser; FastAPI runs as one backend image. Lecture ingestion and Cognito signup validation are separate Lambdas. The hosting template serves the app and lecture JSON through CloudFront with a private S3 origin and OAC. The API target is EC2 behind an HTTPS proxy such as Caddy; API hosting is not provisioned by this repository.
+React/TypeScript runs in the browser; FastAPI runs as one backend image on EC2 behind Caddy HTTPS. Lecture ingestion and Cognito signup validation are separate Lambdas. CloudFront serves the app and lecture JSON from a private S3 origin using OAC. Terraform provisions hosting, API and ingestion; existing CloudFormation stacks retain Cognito and application data. See [deployment](deployment.md) for resource ownership and releases.
 
 ```mermaid
 flowchart LR
@@ -32,10 +32,11 @@ flowchart LR
 │   ├── lambdas/pre_signup/ # NUS email signup validation
 │   ├── scripts/            # Local ingestion and Lambda packaging
 │   └── tests/              # Backend and ingestion tests
-├── infra/                  # Auth, hosting, ingestion and timetable CloudFormation
+├── infra/                  # Existing CloudFormation templates
+│   └── terraform/          # Hosting, API, ingestion and deployment-role configuration
 ├── scripts/smoke_test.py    # API smoke checks
 ├── docs/                   # Development, architecture and deployment guides
-├── .github/workflows/      # CI checks and container builds
+├── .github/workflows/      # CI checks and Terraform deployment
 └── compose.yaml            # Local services and test containers
 ```
 
