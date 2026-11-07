@@ -97,6 +97,22 @@ function occurrenceDates(range: WeekRange, day: Day): number[] {
   return dates
 }
 
+// Whether a lesson meets on an ISO date in teaching week `week` (null outside
+// teaching weeks, e.g. recess, when numbered-week lessons do not run).
+export function lessonMeetsOn(
+  lesson: RawLesson,
+  date: string,
+  week: number | null,
+): boolean {
+  const time = Date.parse(`${date}T00:00:00Z`)
+  const day = DAY_ORDER[(new Date(time).getUTCDay() + 6) % 7]
+  if (lesson.day !== day) return false
+  if (Array.isArray(lesson.weeks)) {
+    return week !== null && lesson.weeks.includes(week)
+  }
+  return occurrenceDates(lesson.weeks, lesson.day).includes(time)
+}
+
 export function lessonConflict(
   left: TimetableLesson,
   right: TimetableLesson,

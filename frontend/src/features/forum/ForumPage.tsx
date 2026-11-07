@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
+import Icon from '../../Icon.tsx'
 // prettier-ignore
 import { confirmSignedIn, getAccessToken, signOut, startSignIn, subscribeToSignOut, tryAutomaticSignIn } from './auth.ts'
 // prettier-ignore
@@ -45,7 +46,8 @@ function DiscussionHeading({ room }: { room: LectureRoom }) {
       <p>
         <Link to="/forum?browse=1">Choose another lecture</Link>
       </p>
-      <header>
+      <header className="page-heading">
+        <p className="eyebrow">The conversation starts here</p>
         <h1>{session.moduleCode} discussion</h1>
         <p>{session.moduleTitle}</p>
         <p>
@@ -72,12 +74,26 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
   const [shareStatus, setShareStatus] = useState('')
   const downloadController = useRef<AbortController | null>(null)
   const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting')
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const historyRef = useRef<HTMLDivElement>(null)
+  const followLatest = useRef(true)
+  const historyAnchor = useRef<{ height: number; top: number } | null>(null)
   const deletedIds = useRef(new Set<string>())
   const historyVersion = useRef(0)
   const interactionVersion = useRef(0)
   const pendingHistory = useRef(new Set<Map<string, MessageOut>>())
   const discussionLink = `${location.origin}${roomPath(roomId)}`
+
+  useLayoutEffect(() => {
+    const history = historyRef.current
+    if (!history || loading) return
+    if (historyAnchor.current) {
+      const { height, top } = historyAnchor.current
+      history.scrollTop = top + history.scrollHeight - height
+      historyAnchor.current = null
+    } else if (followLatest.current) {
+      history.scrollTop = history.scrollHeight
+    }
+  }, [messages, loading])
 
   function addMessage(message: MessageOut) {
     for (const arrived of pendingHistory.current)
@@ -234,6 +250,12 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
     try {
       const page = await getMessages(roomId, getAccessToken, nextCursor)
       if (version !== historyVersion.current) return
+      if (historyRef.current) {
+        historyAnchor.current = {
+          height: historyRef.current.scrollHeight,
+          top: historyRef.current.scrollTop,
+        }
+      }
       setMessages((previous) =>
         mergeMessages(deletedIds.current, page.items, previous),
       )
@@ -319,133 +341,202 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
     return (
       <ForumLayout>
         <DiscussionHeading room={room} />
-        <p role={restoringSignIn ? 'status' : undefined}>
-          {restoringSignIn
-            ? 'Restoring sign-in with Cognito…'
-            : 'Sign in to view and post in this discussion.'}
-        </p>
-        <button onClick={() => void login()} disabled={restoringSignIn}>
-          Sign in with NUS email
-        </button>
-        {sendError && <p role="alert">{sendError}</p>}
+        <section className="forum-chat chat-signin" aria-label="Lecture chat">
+          <span className="chat-symbol">
+            <Icon name="message" />
+          </span>
+          <h2>Join the conversation</h2>
+          <p role={restoringSignIn ? 'status' : undefined}>
+            {restoringSignIn
+              ? 'Restoring sign-in with Cognito…'
+              : 'Sign in to view and post in this discussion.'}
+          </p>
+          <button onClick={() => void login()} disabled={restoringSignIn}>
+            Sign in with NUS email
+          </button>
+          {sendError && <p role="alert">{sendError}</p>}
+        </section>
       </ForumLayout>
     )
 
   return (
     <ForumLayout onReopen={loadError ? refresh : undefined}>
       <DiscussionHeading room={room} />
-      <div className="forum-share">
-        <button className="secondary" onClick={() => void copyLink()}>
-          Copy discussion link
-        </button>
-        {shareStatus === 'copied' && (
-          <span role="status">Discussion link copied.</span>
-        )}
-        {shareStatus === 'manual' && (
-          <label>
-            Copy this discussion link
-            <input
-              readOnly
-              value={discussionLink}
-              onFocus={(event) => event.currentTarget.select()}
-            />
-          </label>
-        )}
-      </div>
-      <div className="forum-actions">
-        <span role="status">{LIVE_LABELS[liveStatus]}</span>
-        <button className="secondary" onClick={refresh} disabled={loading}>
-          Refresh
-        </button>
-        {currentUserId && (
-          <button
-            className="secondary"
-            onClick={() => {
-              void signOut().catch(() =>
-                setSendError('Unable to finish sign-out.'),
-              )
-            }}
-          >
-            Sign out
-          </button>
-        )}
-      </div>
-      {nextCursor && (
-        <button
-          className="panel load-older"
-          disabled={loadingOlder || loading}
-          onClick={() => void loadOlder()}
-        >
-          {loadingOlder ? 'Loading…' : 'Load older messages'}
-        </button>
-      )}
-      {loading ? (
-        <p>Loading…</p>
-      ) : loadError ? (
-        <p role="alert">
-          {loadError} <button onClick={refresh}>Retry</button>
-        </p>
-      ) : messages.length === 0 ? (
-        <p className="status-message">No messages yet. Be the first to post.</p>
-      ) : (
-        <div className="message-list">
-          {messages.map((message) => {
-            const own = message.author_id === currentUserId
-            return (
-              <article
-                key={message.message_id}
-                className={`message${own ? ' own' : ''}`}
+      <section
+        className="forum-chat"
+        aria-label={`${room.session.moduleCode} lecture chat`}
+      >
+        <header className="chat-header">
+          <div className="chat-heading">
+            <span className="chat-symbol">
+              <Icon name="message" />
+            </span>
+            <div>
+              <h2>Lecture chat</h2>
+              <p>Messages disappear after 24 hours</p>
+            </div>
+          </div>
+          <div className="chat-tools">
+            <button className="secondary" onClick={() => void copyLink()}>
+              Copy discussion link
+            </button>
+            <button className="secondary" onClick={refresh} disabled={loading}>
+              Refresh
+            </button>
+            {currentUserId && (
+              <button
+                className="chat-signout"
+                onClick={() => {
+                  void signOut().catch(() =>
+                    setSendError('Unable to finish sign-out.'),
+                  )
+                }}
               >
-                <div className="message-header">
-                  <span className="message-author">
-                    {own ? 'You' : 'Student'}
-                  </span>
-                  <time className="message-time" dateTime={message.posted_at}>
-                    {new Date(message.posted_at).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </time>
-                  {own && (
-                    <button
-                      className="message-delete"
-                      onClick={() => void handleDelete(message.message_id)}
-                    >
-                      Delete
-                    </button>
-                  )}
-                </div>
-                {message.content && (
-                  <p className="message-content">{message.content}</p>
-                )}
-                {message.attachment && (
-                  <PdfAttachment
-                    filename={message.attachment.filename}
-                    size={message.attachment.size}
-                    action="download"
-                    onAction={() => void handleDownload(message)}
-                  />
-                )}
-              </article>
-            )
-          })}
+                Sign out
+              </button>
+            )}
+          </div>
+        </header>
+        <div className="chat-statusbar">
+          <span className={`chat-live-status is-${liveStatus}`} role="status">
+            <span aria-hidden="true" />
+            {LIVE_LABELS[liveStatus]}
+          </span>
+          <span className="chat-room-label">
+            {room.session.moduleCode} · Lecture {room.session.classNo}
+          </span>
         </div>
-      )}
-      <div ref={bottomRef} />
-      <ForumComposer
-        roomId={roomId}
-        disabled={loading || !!loadError || !currentUserId}
-        error={sendError}
-        onError={setSendError}
-        onSignInRequired={() => setUnauthenticated(true)}
-        onSent={(message) => {
-          addMessage(message)
-          bottomRef.current?.scrollIntoView?.({
-            behavior: 'smooth',
-            block: 'nearest',
-          })
-        }}
-      />
+        {shareStatus && (
+          <div className="forum-share">
+            {shareStatus === 'copied' && (
+              <span role="status">Discussion link copied.</span>
+            )}
+            {shareStatus === 'manual' && (
+              <label>
+                Copy this discussion link
+                <input
+                  readOnly
+                  value={discussionLink}
+                  onFocus={(event) => event.currentTarget.select()}
+                />
+              </label>
+            )}
+          </div>
+        )}
+        <div
+          className="chat-history"
+          ref={historyRef}
+          role="region"
+          aria-label="Messages"
+          tabIndex={0}
+          onScroll={(event) => {
+            const { scrollHeight, scrollTop, clientHeight } =
+              event.currentTarget
+            followLatest.current = scrollHeight - scrollTop - clientHeight < 64
+          }}
+        >
+          {nextCursor && (
+            <button
+              className="load-older"
+              disabled={loadingOlder || loading}
+              onClick={() => void loadOlder()}
+            >
+              {loadingOlder ? 'Loading…' : 'Load older messages'}
+            </button>
+          )}
+          {loading ? (
+            <p className="chat-empty" role="status">
+              Loading messages…
+            </p>
+          ) : loadError ? (
+            <p className="chat-empty" role="alert">
+              {loadError} <button onClick={refresh}>Retry</button>
+            </p>
+          ) : messages.length === 0 ? (
+            <div className="chat-empty">
+              <span className="chat-symbol">
+                <Icon name="message" />
+              </span>
+              <h3>A new lecture. A new conversation.</h3>
+              <p>No messages yet. Be the first to post.</p>
+            </div>
+          ) : (
+            <div
+              className="message-list"
+              role="log"
+              aria-label="Lecture conversation"
+              aria-live="polite"
+              aria-relevant="additions text"
+            >
+              {messages.map((message) => {
+                const own = message.author_id === currentUserId
+                return (
+                  <article
+                    key={message.message_id}
+                    className={`message${own ? ' own' : ''}`}
+                  >
+                    <span className="message-avatar" aria-hidden="true">
+                      {(message.author_name || (own ? 'You' : 'Student'))
+                        .slice(0, 1)
+                        .toUpperCase()}
+                    </span>
+                    <div className="message-bubble">
+                      <div className="message-header">
+                        <span className="message-author">
+                          {own
+                            ? `You${message.author_name ? ` (${message.author_name})` : ''}`
+                            : message.author_name || 'Student'}
+                        </span>
+                        <time
+                          className="message-time"
+                          dateTime={message.posted_at}
+                        >
+                          {new Date(message.posted_at).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </time>
+                        {own && (
+                          <button
+                            className="message-delete"
+                            onClick={() =>
+                              void handleDelete(message.message_id)
+                            }
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                      {message.content && (
+                        <p className="message-content">{message.content}</p>
+                      )}
+                      {message.attachment && (
+                        <PdfAttachment
+                          filename={message.attachment.filename}
+                          size={message.attachment.size}
+                          action="download"
+                          onAction={() => void handleDownload(message)}
+                        />
+                      )}
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          )}
+        </div>
+        <ForumComposer
+          roomId={roomId}
+          disabled={loading || !!loadError || !currentUserId}
+          error={sendError}
+          onError={setSendError}
+          onSignInRequired={() => setUnauthenticated(true)}
+          onSent={(message) => {
+            followLatest.current = true
+            addMessage(message)
+          }}
+        />
+      </section>
     </ForumLayout>
   )
 }

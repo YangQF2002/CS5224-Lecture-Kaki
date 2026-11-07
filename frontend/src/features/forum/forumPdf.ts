@@ -75,12 +75,11 @@ export async function downloadPdf(
     getToken,
     { signal },
   )
-  const blob = await response.blob()
+  const { url } = (await response.json()) as { url: string }
   signal.throwIfAborted()
-  const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
   link.download = filename
+  link.referrerPolicy = 'no-referrer'
   link.click()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

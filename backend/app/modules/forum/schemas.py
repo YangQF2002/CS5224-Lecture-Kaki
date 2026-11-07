@@ -57,6 +57,9 @@ class MessageOut(BaseModel):
     message_id: str
     room_id: str
     author_id: str
+    # The author's username; never their email. None for older messages or
+    # when profiles were unavailable at posting time.
+    author_name: str | None = None
     content: str
     posted_at: str
     expires_at: str

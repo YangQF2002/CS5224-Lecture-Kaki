@@ -1,0 +1,128 @@
+.profile-signin button {
+  margin-top: 0.25rem;
+}
+
+.profile-hint,
+.profile-summary {
+  color: var(--muted);
+  font-size: var(--text-body);
+}
+
+.profile-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.profile-heading h2 {
+  margin-bottom: 0.5rem;
+}
+
+.profile-save {
+  color: var(--green);
+  font-size: var(--text-body);
+}
+
+.username-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: flex-end;
+}
+
+.username-form label {
+  flex: 1 1 14rem;
+}
+
+.username-form input {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.profile-save.is-error {
+  color: var(--danger);
+}
+
+.topic-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+button.topic-button {
+  min-height: 2.25rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  color: var(--ink);
+  background: white;
+  border-color: var(--border);
+}
+
+button.topic-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+button.topic-button[aria-pressed='true'] {
+  color: white;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.profile-signin {
+  max-width: 40rem;
+  padding: 2.25rem;
+}
+.profile-signin h2 {
+  font: 400 2rem/1.15 var(--heading-font);
+  letter-spacing: -0.025em;
+  margin-top: 1.25rem;
+}
+.profile-signin > p {
+  color: var(--muted);
+  font-size: var(--text-body);
+  line-height: 1.7;
+}
+.profile-avatar {
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 50%;
+}
+.profile-avatar .icon {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+.profile-page .panel > p,
+.profile-page .panel > div > p {
+  font-size: var(--text-label);
+  color: var(--muted);
+}
+.topic-buttons {
+  margin-top: 1.25rem;
+}
+button.topic-button {
+  border-radius: 0.5rem;
+  font-size: var(--text-label);
+  padding: 0.5rem 0.85rem;
+}
+button.topic-button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: #dabdaf;
+}
+.username-form {
+  max-width: 35rem;
+  margin-top: 1rem;
+}
+@media (max-width: 600px) {
+  .profile-signin {
+    padding: 1.5rem;
+  }
+}

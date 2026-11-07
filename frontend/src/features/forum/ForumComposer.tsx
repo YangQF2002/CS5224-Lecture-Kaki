@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import Icon from '../../Icon.tsx'
 import { getAccessToken, subscribeToSignOut } from './auth.ts'
 // prettier-ignore
 import { ForumApiError, needsSignIn, postMessage, type MessageOut } from './forumApi.ts'
@@ -118,13 +119,14 @@ export default function ForumComposer({
   }
 
   return (
-    <section className="panel composer">
+    <section className="composer" aria-label="Write a message">
       <label htmlFor="forum-message">Your message</label>
       <div className="composer-input-row">
         <textarea
           id="forum-message"
           value={content}
-          placeholder="Write a message…"
+          placeholder="Ask a question, share a thought, or say hello…"
+          aria-describedby="forum-compose-hint forum-character-count"
           onChange={(event) => {
             setContent(event.target.value)
             saveDraft(roomId, event.target.value)
@@ -176,7 +178,9 @@ export default function ForumComposer({
           onAction={() => selectPdf(null)}
         />
       )}
-      <p className="forum-compose-hint">Ctrl/Cmd + Enter to send.</p>
+      <p className="forum-compose-hint" id="forum-compose-hint">
+        Ctrl/Cmd + Enter to send.
+      </p>
       {status && (
         <p role="status">
           {status}{' '}
@@ -190,12 +194,14 @@ export default function ForumComposer({
       )}
       <div className="composer-footer">
         <span
+          id="forum-character-count"
           className={`char-count${characterCount > MAX_CONTENT ? ' over' : ''}`}
         >
           {characterCount}/{MAX_CONTENT}
         </span>
         <button onClick={() => void send()} disabled={!canSend}>
           {sending ? 'Sending…' : 'Send'}
+          <Icon name="send" />
         </button>
       </div>
       {error && <p role="alert">{error}</p>}

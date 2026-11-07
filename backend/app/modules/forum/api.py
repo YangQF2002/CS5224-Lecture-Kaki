@@ -20,6 +20,7 @@ from fastapi import (
 from fastapi.concurrency import run_in_threadpool
 
 from app.modules.auth import CurrentUser, get_current_user
+from app.modules.profile import username_for
 
 from . import attachment_store, attachments, realtime, repository
 from .schemas import ConnectionTicket, MessageIn, MessageOut, MessagePage, RoomId
@@ -43,7 +44,9 @@ async def post_message(
     body: MessageIn,
     user: _Auth,
 ) -> MessageOut:
-    item = make_message(room_id, body.content, user.user_id)
+    # Posting still works, labelled "Student", if profiles are unavailable.
+    author_name = await run_in_threadpool(username_for, user.user_id)
+    item = make_message(room_id, body.content, user.user_id, author_name)
     if body.attachment_id:
         upload = await run_in_threadpool(
             attachments.owned_upload, room_id, body.attachment_id, user.user_id
@@ -128,7 +131,8 @@ async def delete_message(
         try:
             await run_in_threadpool(attachment_store.delete_object, item["attachment"])
         except repository.ForumStorageUnavailable:
-            # Access is already revoked; bucket lifecycle removes residual versions.
+            # No new download links can be issued; existing links expire within 60s.
+            # Bucket lifecycle removes residual versions if deletion fails.
             logger.warning("PDF cleanup deferred to bucket lifecycle", exc_info=True)
 
 

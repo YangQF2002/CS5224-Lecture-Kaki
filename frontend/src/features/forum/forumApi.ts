@@ -27,6 +27,8 @@ export interface MessageOut {
   message_id: string
   room_id: string
   author_id: string
+  // The author's username; absent on older messages.
+  author_name?: string | null
   content: string
   posted_at: string
   expires_at: string

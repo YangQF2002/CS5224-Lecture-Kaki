@@ -1,6 +1,7 @@
 """Room-bound PDF uploads, format validation and authenticated downloads."""
 
 import re
+from datetime import datetime
 from io import BytesIO
 from time import time
 from typing import Annotated
@@ -8,8 +9,7 @@ from urllib.parse import quote
 from uuid import uuid4
 
 from botocore.exceptions import BotoCoreError, ClientError
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
@@ -185,17 +185,35 @@ def upload_status(room_id: RoomId, upload_id: _UploadId, user: _Auth):
 
 
 @router.get("/{room_id:path}/messages/{message_id}/attachment")
-def download_pdf(room_id: RoomId, message_id: str, user: _Auth):
+def download_pdf(room_id: RoomId, message_id: str, user: _Auth, response: Response):
     item = repository.get_message(room_id, message_id)
     if not item or is_expired(item) or not item.get("attachment"):
         raise HTTPException(status_code=404, detail="PDF is no longer available")
     attachment = item["attachment"]
-    return Response(
-        content=read_pdf(attachment),
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(attachment['filename'], safe='')}",
-            "Cache-Control": "no-store",
-            "X-Content-Type-Options": "nosniff",
-        },
-    )
+    # S3 checks expiry when a request starts. Never issue a link beyond the
+    # message's access window; downloads already in progress can finish.
+    remaining = int(datetime.fromisoformat(item["expires_at"]).timestamp() - time())
+    if remaining < 1:
+        raise HTTPException(status_code=404, detail="PDF is no longer available")
+    expires_in = min(60, remaining)
+    s3, bucket = store.s3()
+    try:
+        url = s3.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": bucket,
+                "Key": attachment["key"],
+                "VersionId": attachment["version_id"],
+                "ResponseContentType": "application/octet-stream",
+                "ResponseContentDisposition": (
+                    f"attachment; filename*=UTF-8''{quote(attachment['filename'], safe='')}"
+                ),
+                "ResponseCacheControl": "no-store",
+            },
+            ExpiresIn=expires_in,
+        )
+    except (BotoCoreError, ClientError) as error:
+        raise repository.ForumStorageUnavailable() from error
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return {"url": url}

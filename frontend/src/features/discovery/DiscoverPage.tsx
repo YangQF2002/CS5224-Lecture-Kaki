@@ -1,13 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import SelectField from '../../SelectField.tsx'
+import Icon from '../../Icon.tsx'
+import DiscoveryHeader from './DiscoveryHeader.tsx'
+import DiscoveryRail from './DiscoveryRail.tsx'
+import { parseRoomId, roomIdFor, roomPath } from '../forum/roomCatalogue.ts'
 import { getAccessToken } from '../forum/auth.ts'
+import { getProfile } from '../profile/profileApi.ts'
+import { fetchModule } from '../timetable/nusmodsApi.ts'
 import { saveRemoteTimetable } from '../timetable/timetableApi.ts'
 import { loadTimetable, saveTimetable } from '../timetable/timetableStorage.ts'
+import { expandSelections } from '../timetable/timetableUtils.ts'
 import {
+  DEFAULT_FROM,
   DEFAULT_TO,
   OTHER_VENUES,
   buildSearchText,
+  buildTopicsByCode,
   chooseDefaultWeek,
   codePrefix,
   filterSessions,
@@ -22,14 +31,21 @@ import {
 import { fetchLectureSnapshot, fetchWeekSessions } from './lectureApi.ts'
 import MultiSelect, { type MultiSelectOption } from './MultiSelect.tsx'
 import SessionCard from './SessionCard.tsx'
+import {
+  sessionClashes,
+  teachingWeek,
+  type TimetableCheck,
+} from './timetableClashes.ts'
 import type {
+  NusmodsModule,
   Semester,
+  TimetableLesson,
   TimetableSelection,
   TimetableState,
 } from '../timetable/types.ts'
 import type { LectureSession, LectureSnapshot, WeekSessions } from './types.ts'
 import './discovery.css'
-const PAGE_SIZE = 50
+const PAGE_SIZE = 24
 const SOON_WINDOW_MINUTES = 180
 const MIN_SIZE_OPTIONS = [0, 50, 100, 200, 400]
 function formatDate(date: string, options: Intl.DateTimeFormatOptions) {
@@ -45,14 +61,15 @@ function formatTerm(acadYear: string, semester: number) {
 
 function countOptions(
   sessions: LectureSession[],
-  keyOf: (session: LectureSession) => string,
+  keyOf: (session: LectureSession) => string | string[],
   selected: string[],
   labelOf: (value: string) => string = (value) => value,
 ): MultiSelectOption[] {
   const counts = new Map<string, number>(selected.map((value) => [value, 0]))
   for (const session of sessions) {
-    const key = keyOf(session)
-    counts.set(key, (counts.get(key) ?? 0) + 1)
+    for (const key of [keyOf(session)].flat()) {
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
   }
   return [...counts]
     .map(([value, count]) => ({ value, label: labelOf(value), count }))
@@ -62,7 +79,14 @@ function countOptions(
 function DiscoverPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const filters = useMemo(() => parseFilters(searchParams), [searchParams])
-  const [queryInput, setQueryInput] = useState(filters.query)
+  const [searchDraft, setSearchDraft] = useState({
+    query: filters.query,
+    value: filters.query,
+  })
+  const queryInput =
+    searchDraft.query === filters.query ? searchDraft.value : filters.query
+  const [notice, setNotice] = useState('')
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [snapshot, setSnapshot] = useState<LectureSnapshot | null>(null)
   const [snapshotError, setSnapshotError] = useState('')
   const [weekData, setWeekData] = useState<WeekSessions | null>(null)
@@ -70,6 +94,20 @@ function DiscoverPage() {
   const [today] = useState(() => singaporeNow().date)
   const [shown, setShown] = useState({ key: '', count: PAGE_SIZE })
   const [timetable, setTimetable] = useState(loadTimetable)
+  // The signed-in user's interest topics; null when signed out or unavailable.
+  const [interests, setInterests] = useState<string[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getProfile(getAccessToken)
+      .then((profile) => {
+        if (!cancelled) setInterests(profile.topics)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -186,12 +224,66 @@ function DiscoverPage() {
       ),
     [timetableSelections],
   )
+  // Timetable lessons with times, from NUSMods, for marking clashing lectures.
+  // Kept with the selections they came from so stale results are never shown.
+  const [loadedLessons, setLoadedLessons] = useState<{
+    selections: TimetableSelection[]
+    lessons: TimetableLesson[]
+    complete: boolean
+  }>({ selections: [], lessons: [], complete: false })
+  const timetableLessons = useMemo(
+    () =>
+      loadedLessons.selections === timetableSelections
+        ? loadedLessons.lessons
+        : [],
+    [loadedLessons, timetableSelections],
+  )
+  const timetableCheck: TimetableCheck =
+    timetableSelections.length === 0
+      ? 'empty'
+      : loadedLessons.selections !== timetableSelections
+        ? 'loading'
+        : loadedLessons.complete
+          ? 'ready'
+          : 'unavailable'
+  useEffect(() => {
+    if (!snapshot || timetableSelections.length === 0) return
+    let cancelled = false
+    const academicYear = snapshot.pointer.acadYear
+    const semester = snapshot.pointer.semester as Semester
+    const codes = [...new Set(timetableSelections.map((s) => s.moduleCode))]
+
+    // A module that fails to load is skipped rather than hiding every clash.
+    void Promise.allSettled(
+      codes.map((code) => fetchModule(academicYear, code)),
+    ).then((results) => {
+      if (cancelled) return
+      const modules: Record<string, NusmodsModule> = {}
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          modules[result.value.moduleCode] = result.value
+        }
+      }
+      setLoadedLessons({
+        selections: timetableSelections,
+        lessons: expandSelections(timetableSelections, modules, semester),
+        complete: results.every((result) => result.status === 'fulfilled'),
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [snapshot, timetableSelections])
   const addedLectureCodes = useMemo(
     () => new Set([...nusmodsLectureCodes, ...discoverLectureCodes]),
     [discoverLectureCodes, nusmodsLectureCodes],
   )
   const searchText = useMemo(
     () => buildSearchText(snapshot?.modules ?? []),
+    [snapshot],
+  )
+  const topicsByCode = useMemo(
+    () => buildTopicsByCode(snapshot?.modules ?? []),
     [snapshot],
   )
   const levels = useMemo(
@@ -202,9 +294,42 @@ function DiscoverPage() {
     [snapshot],
   )
 
+  const interestSet = useMemo(
+    () => (interests?.length ? new Set(interests) : null),
+    [interests],
+  )
+
   const results = useMemo(
-    () => (sessions ? filterSessions(sessions, activeFilters, searchText) : []),
-    [sessions, activeFilters, searchText],
+    () =>
+      sessions
+        ? filterSessions(
+            sessions,
+            activeFilters,
+            searchText,
+            topicsByCode,
+            interestSet,
+          ).filter(
+            (session) =>
+              !filters.hideClashes ||
+              timetableCheck !== 'ready' ||
+              sessionClashes(
+                session,
+                teachingWeek(selectedWeek?.week ?? ''),
+                timetableLessons,
+              ).length === 0,
+          )
+        : [],
+    [
+      sessions,
+      activeFilters,
+      searchText,
+      topicsByCode,
+      interestSet,
+      filters.hideClashes,
+      timetableCheck,
+      selectedWeek,
+      timetableLessons,
+    ],
   )
 
   const weekSessions = useMemo(() => sessions ?? [], [sessions])
@@ -235,6 +360,15 @@ function DiscoverPage() {
         filters.faculties,
       ),
     [weekSessions, filters.faculties],
+  )
+  const topicOptions = useMemo(
+    () =>
+      countOptions(
+        weekSessions,
+        (session) => topicsByCode.get(session.moduleCode) ?? [],
+        filters.topics,
+      ),
+    [weekSessions, topicsByCode, filters.topics],
   )
 
   const resultsKey = `${searchParams.toString()}|${selectedWeek?.week}`
@@ -284,7 +418,7 @@ function DiscoverPage() {
   }
 
   function clearFilters() {
-    setQueryInput('')
+    setSearchDraft({ query: '', value: '' })
     setSearchParams(
       selectedWeek ? { week: selectedWeek.week } : new URLSearchParams(),
       { replace: true },
@@ -336,6 +470,9 @@ function DiscoverPage() {
       semesterSelections,
     }
 
+    setNotice(
+      `${session.moduleCode} ${alreadyAdded ? 'removed from' : 'added to'} your timetable.`,
+    )
     setTimetable(nextTimetable)
     saveTimetable(nextTimetable)
     void saveRemoteTimetable(
@@ -347,8 +484,8 @@ function DiscoverPage() {
   if (snapshotError) {
     return (
       <main className="discover-page">
-        <h1>Discover Lectures</h1>
-        <p className="status-message">
+        <DiscoveryHeader />
+        <p className="status-message" role="alert">
           Lecture data is unavailable right now ({snapshotError}). Try again
           later.
         </p>
@@ -359,103 +496,86 @@ function DiscoverPage() {
   if (!snapshot || !selectedWeek) {
     return (
       <main className="discover-page">
-        <h1>Discover Lectures</h1>
-        <p aria-live="polite">
-          {snapshot ? 'No lectures have been published yet.' : 'Loading…'}
+        <DiscoveryHeader />
+        <p className="discovery-loading" role="status">
+          {snapshot
+            ? 'No lectures have been published yet.'
+            : 'Finding your next favourite lecture…'}
         </p>
       </main>
     )
   }
 
+  const previewDate =
+    activeFilters.days[0] ?? (weekDays.includes(today) ? today : weekDays[0])
+  const advancedCount =
+    filters.topics.length +
+    filters.buildings.length +
+    filters.codes.length +
+    filters.faculties.length +
+    filters.levels.length +
+    Number(filters.from !== DEFAULT_FROM) +
+    Number(filters.to !== DEFAULT_TO) +
+    Number(filters.minSize > 0) +
+    Number(filters.includeOnline) +
+    Number(filters.myTopics)
+  const hasFilters = Boolean(
+    filters.query ||
+    activeFilters.days.length ||
+    advancedCount ||
+    filters.hideClashes,
+  )
+
   return (
     <main className="discover-page">
-      <header className="discover-header">
-        <h1>Discover Lectures</h1>
-        <p>Find lectures outside your modules that you can drop in on.</p>
-        <p className="data-note">
-          {formatTerm(snapshot.pointer.acadYear, snapshot.pointer.semester)},
-          updated{' '}
-          {formatDate(snapshot.pointer.generatedAt.slice(0, 10), {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-          })}
-        </p>
-      </header>
-
-      <div className="discover-layout">
-        <form
-          className="panel discover-filters"
-          aria-label="Lecture filters"
-          onSubmit={(event) => event.preventDefault()}
-        >
-          <div className="filter-actions">
-            <button
-              type="button"
-              disabled={!canShowSoon}
-              title={
-                canShowSoon ? undefined : 'No more lectures are scheduled today'
-              }
-              onClick={showStartingSoon}
-            >
-              Starting soon
-            </button>
-            <button type="button" className="secondary" onClick={clearFilters}>
-              Clear filters
-            </button>
-          </div>
-
-          <label>
-            Keywords
+      <DiscoveryHeader
+        term={formatTerm(snapshot.pointer.acadYear, snapshot.pointer.semester)}
+      />
+      <form
+        className="discovery-search"
+        aria-label="Lecture filters"
+        onSubmit={(event) => event.preventDefault()}
+      >
+        <div className="discovery-searchbar">
+          <label className="discovery-query">
+            <span className="visually-hidden">Search modules</span>
+            <Icon name="search" />
             <input
               type="search"
               value={queryInput}
-              placeholder="e.g. machine learning, CS2030"
+              placeholder="Search modules or topics"
               onChange={(event) => {
-                setQueryInput(event.target.value)
+                setSearchDraft({
+                  query: event.target.value.trim(),
+                  value: event.target.value,
+                })
                 updateFilters({ query: event.target.value.trim() })
               }}
             />
           </label>
-
-          <label>
-            Week
+          <div className="discovery-week">
             <SelectField
               value={selectedWeek.week}
               onValueChange={(value) =>
                 updateFilters({ week: value, days: [] })
               }
+              aria-label="Week"
               options={weeks.map((week) => ({
                 value: week.week,
-                label: `${weekName(week.week)} · ${formatDate(week.startDate, {
-                  day: 'numeric',
-                  month: 'short',
-                })}`,
+                label: `${weekName(week.week)} · ${formatDate(week.startDate, { day: 'numeric', month: 'short' })}`,
               }))}
-              aria-label="Week"
-            >
-              {/*
-              {weeks.map((week) => (
-                <option key={week.week} value={week.week}>
-                  {weekName(week.week)} ·{' '}
-                  {formatDate(week.startDate, {
-                    day: 'numeric',
-                    month: 'short',
-                  })}
-                </option>
-            ))}
-            */}
-            </SelectField>
-          </label>
-
+            />
+          </div>
+        </div>
+        <div className="discovery-datebar">
           <fieldset>
-            <legend>Days</legend>
+            <legend className="visually-hidden">Days</legend>
             <div className="chip-row">
               {weekDays.map((day) => (
                 <button
                   key={day}
                   type="button"
-                  className="chip"
+                  className="day-chip"
                   aria-pressed={activeFilters.days.includes(day)}
                   onClick={() =>
                     updateFilters({
@@ -463,15 +583,52 @@ function DiscoverPage() {
                     })
                   }
                 >
-                  {formatDate(day, {
-                    weekday: 'short',
-                    day: 'numeric',
-                  })}
+                  <span>{formatDate(day, { weekday: 'short' })}</span>{' '}
+                  <span>{formatDate(day, { day: 'numeric' })}</span>
                 </button>
               ))}
             </div>
           </fieldset>
-
+          <button
+            type="button"
+            className="chip starting-soon"
+            disabled={!canShowSoon}
+            title={
+              canShowSoon ? undefined : 'No more lectures are scheduled today'
+            }
+            onClick={showStartingSoon}
+          >
+            <Icon name="clock" />
+            Starting soon
+          </button>
+          {hasFilters && (
+            <button
+              type="button"
+              className="clear-filters"
+              onClick={clearFilters}
+            >
+              Clear filters
+            </button>
+          )}
+          <button
+            type="button"
+            className="filter-toggle secondary"
+            aria-expanded={filtersOpen}
+            aria-controls="discovery-advanced-filters"
+            onClick={() => setFiltersOpen(!filtersOpen)}
+          >
+            <Icon name="sliders" />
+            <span>Filters</span>
+            {advancedCount > 0 && (
+              <span className="filter-count">{advancedCount}</span>
+            )}
+          </button>
+        </div>
+        <div
+          className="discover-filters"
+          id="discovery-advanced-filters"
+          hidden={!filtersOpen}
+        >
           <div className="time-range">
             <label>
               Starts from
@@ -502,7 +659,15 @@ function DiscoverPage() {
               />
             </label>
           </div>
-
+          {topicOptions.length > 0 && (
+            <MultiSelect
+              label="Topics"
+              options={topicOptions}
+              selected={filters.topics}
+              searchPlaceholder="Search topics"
+              onChange={(topics) => updateFilters({ topics })}
+            />
+          )}
           <MultiSelect
             label="Buildings"
             options={buildingOptions}
@@ -524,7 +689,20 @@ function DiscoverPage() {
             searchPlaceholder="Search faculties"
             onChange={(faculties) => updateFilters({ faculties })}
           />
-
+          <label>
+            Minimum class size
+            <SelectField
+              value={String(filters.minSize)}
+              onValueChange={(value) =>
+                updateFilters({ minSize: Number(value) })
+              }
+              options={MIN_SIZE_OPTIONS.map((size) => ({
+                value: String(size),
+                label: size === 0 ? 'Any size' : `${size}+ students`,
+              }))}
+              aria-label="Minimum class size"
+            />
+          </label>
           <fieldset>
             <legend>Levels</legend>
             <div className="chip-row">
@@ -545,30 +723,34 @@ function DiscoverPage() {
               ))}
             </div>
           </fieldset>
-
-          <label>
-            Minimum class size
-            <SelectField
-              value={String(filters.minSize)}
-              onValueChange={(value) =>
-                updateFilters({ minSize: Number(value) })
-              }
-              options={MIN_SIZE_OPTIONS.map((size) => ({
-                value: String(size),
-                label: size === 0 ? 'Any size' : `${size}+ students`,
-              }))}
-              aria-label="Minimum class size"
-            >
-              {/*
-              {MIN_SIZE_OPTIONS.map((size) => (
-                <option key={size} value={size}>
-                  {size === 0 ? 'Any size' : `${size}+ students`}
-                </option>
-              ))}
-            */}
-            </SelectField>
-          </label>
-
+          <div className="my-topics">
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={filters.myTopics && interestSet !== null}
+                disabled={interestSet === null}
+                onChange={(event) =>
+                  updateFilters({ myTopics: event.target.checked })
+                }
+              />
+              Only my topics
+            </label>
+            {interestSet === null && (
+              <p className="filter-hint">
+                {interests ? (
+                  <>
+                    Choose topics in your <Link to="/profile">Profile</Link>{' '}
+                    first.
+                  </>
+                ) : (
+                  <>
+                    <Link to="/profile">Log in</Link> to search your interest
+                    topics.
+                  </>
+                )}
+              </p>
+            )}
+          </div>
           <label className="checkbox">
             <input
               type="checkbox"
@@ -579,42 +761,91 @@ function DiscoverPage() {
             />
             Include online lectures
           </label>
-        </form>
-
+        </div>
+      </form>
+      <div className="discover-layout">
         <section className="discover-results" aria-label="Lectures">
-          <p className="drop-in-note">
-            Lecturers may not expect visitors: arrive on time, sit at the back
-            and leave if asked.
-          </p>
-
+          <div className="discovery-results-heading">
+            <div>
+              <h2 className="visually-hidden">Lectures</h2>
+              <p className="results-count" aria-live="polite">
+                {sessions ? (
+                  <>
+                    {results.length === 1
+                      ? '1 lecture'
+                      : `${results.length.toLocaleString()} lectures`}{' '}
+                    in {weekName(selectedWeek.week)}
+                  </>
+                ) : (
+                  `Finding lectures in ${weekName(selectedWeek.week)}…`
+                )}
+              </p>
+            </div>
+            <label
+              className="checkbox clash-filter"
+              title={
+                timetableCheck === 'empty'
+                  ? 'Add your modules in My Timetable to check for clashes'
+                  : undefined
+              }
+            >
+              <input
+                type="checkbox"
+                checked={filters.hideClashes}
+                disabled={timetableCheck !== 'ready'}
+                onChange={(event) =>
+                  updateFilters({ hideClashes: event.target.checked })
+                }
+              />
+              Hide clashes
+            </label>
+          </div>
+          {filters.hideClashes && timetableCheck !== 'ready' && (
+            <p className="filter-hint" role="status">
+              {timetableCheck === 'loading'
+                ? 'Checking your timetable before hiding clashes…'
+                : 'Showing all matches until your timetable is available for clash checking.'}
+            </p>
+          )}
+          {notice && (
+            <p className="discovery-notice" role="status">
+              <Icon name="check" />
+              {notice}
+            </p>
+          )}
           {weekLoadError ? (
-            <p className="status-message">
+            <p className="status-message" role="alert">
               Unable to load {weekName(selectedWeek.week)} ({weekLoadError}).
             </p>
           ) : !sessions ? (
-            <p aria-live="polite">Loading {weekName(selectedWeek.week)}…</p>
+            <p className="discovery-loading" role="status">
+              Loading {weekName(selectedWeek.week)}…
+            </p>
           ) : (
             <>
-              <p className="results-count" aria-live="polite">
-                {results.length === 1
-                  ? '1 lecture'
-                  : `${results.length.toLocaleString()} lectures`}{' '}
-                in {weekName(selectedWeek.week)}
-              </p>
-
               {results.length === 0 && (
-                <p>No lectures match these filters. Try widening them.</p>
+                <div className="discovery-empty">
+                  <Icon name="search" />
+                  <h3>A little more room to explore?</h3>
+                  <p>No lectures match these filters. Try widening them.</p>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={clearFilters}
+                  >
+                    Reset your search
+                  </button>
+                </div>
               )}
-
               {visibleGroups.map(([date, daySessions]) => (
                 <section key={date} className="day-group">
-                  <h2>
+                  <h3>
                     {formatDate(date, {
                       weekday: 'long',
                       day: 'numeric',
                       month: 'long',
                     })}
-                  </h2>
+                  </h3>
                   <div className="session-list">
                     {daySessions.map((session) => (
                       <SessionCard
@@ -625,6 +856,17 @@ function DiscoverPage() {
                           session.moduleCode,
                         )}
                         disableAdd={nusmodsLectureCodes.has(session.moduleCode)}
+                        timetableCheck={timetableCheck}
+                        discussionPath={
+                          parseRoomId(roomIdFor(session, snapshot.pointer))
+                            ? roomPath(roomIdFor(session, snapshot.pointer))
+                            : null
+                        }
+                        clashes={sessionClashes(
+                          session,
+                          teachingWeek(selectedWeek.week),
+                          timetableLessons,
+                        )}
                         onAddToTimetable={() =>
                           toggleLectureToTimetable(session)
                         }
@@ -633,7 +875,6 @@ function DiscoverPage() {
                   </div>
                 </section>
               ))}
-
               {results.length > visibleCount && (
                 <button
                   type="button"
@@ -652,7 +893,36 @@ function DiscoverPage() {
             </>
           )}
         </section>
+        <DiscoveryRail
+          days={weekDays}
+          date={previewDate}
+          week={selectedWeek.week}
+          lessons={timetableLessons}
+          timetableCheck={timetableCheck}
+          onDateChange={(date) =>
+            updateFilters({
+              days:
+                activeFilters.days.length === 1 &&
+                activeFilters.days[0] === date
+                  ? []
+                  : [date],
+            })
+          }
+        />
       </div>
+      <footer className="discovery-footnote">
+        <p>
+          Drop in thoughtfully. Arrive on time, sit at the back and leave if
+          asked.
+        </p>
+        <p>
+          Lecture data updated{' '}
+          {formatDate(snapshot.pointer.generatedAt.slice(0, 10), {
+            day: 'numeric',
+            month: 'short',
+          })}
+        </p>
+      </footer>
     </main>
   )
 }

@@ -364,6 +364,7 @@ it('posts PDF-only messages and offers authenticated downloads', async () => {
     ...own,
     content: '',
     message_id: '3-pdf',
+    author_name: 'LectureKaki',
     attachment: { filename: file.name, size: file.size },
   }
   vi.mocked(pdfApi.uploadPdf).mockResolvedValueOnce('pdf-upload-id')
@@ -397,6 +398,7 @@ it('posts PDF-only messages and offers authenticated downloads', async () => {
     vi.mocked(pdfApi.uploadPdf).mock.calls[0][3],
   )
   expect(screen.getByText(file.name)).toBeTruthy()
+  expect(screen.getByText('You (LectureKaki)')).toBeTruthy()
   reply(message)
   expect(
     screen.getAllByRole('button', { name: /Download PDF: lecture.pdf/ }),
@@ -441,6 +443,7 @@ it.each(['signs out', 'leaves the room'])(
     )
     renderForum()
     await screen.findByLabelText('Your message')
+    await waitFor(() => expect(messageBox().disabled).toBe(false))
     change('Your message', 'Keep this draft')
     fireEvent.change(screen.getByLabelText('PDF file'), {
       target: {
@@ -473,3 +476,52 @@ it.each(['signs out', 'leaves the room'])(
     }
   },
 )
+
+it('follows live replies only while the reader is at the bottom of the chat', async () => {
+  renderForum()
+  await screen.findByText(own.content)
+  const history = screen.getByRole('region', { name: 'Messages' })
+  Object.defineProperties(history, {
+    scrollHeight: { configurable: true, value: 1000 },
+    clientHeight: { configurable: true, value: 300 },
+  })
+  history.scrollTop = 100
+  fireEvent.scroll(history)
+  reply({ ...own, message_id: '2-a', content: 'Reply while reading history' })
+  expect(history.scrollTop).toBe(100)
+
+  history.scrollTop = 700
+  fireEvent.scroll(history)
+  Object.defineProperty(history, 'scrollHeight', { value: 1100 })
+  reply({ ...own, message_id: '2-b', content: 'Newest reply' })
+  expect(history.scrollTop).toBe(1100)
+})
+
+it('keeps the reading position when older messages are prepended', async () => {
+  api.getMessages.mockResolvedValueOnce({ items: [own], next_cursor: 'older' })
+  api.getMessages.mockResolvedValueOnce({
+    items: [
+      {
+        ...own,
+        message_id: '00000000000000000000-a',
+        content: 'Older message',
+      },
+    ],
+    next_cursor: 'even-older',
+  })
+  renderForum()
+  await screen.findByText(own.content)
+  const history = screen.getByRole('region', { name: 'Messages' })
+  Object.defineProperties(history, {
+    scrollHeight: {
+      configurable: true,
+      get: () => 1000 + history.querySelectorAll('article').length * 100,
+    },
+    clientHeight: { configurable: true, value: 300 },
+  })
+  history.scrollTop = 100
+  fireEvent.scroll(history)
+  fireEvent.click(screen.getByRole('button', { name: 'Load older messages' }))
+  await screen.findByText('Older message')
+  expect(history.scrollTop).toBe(200)
+})

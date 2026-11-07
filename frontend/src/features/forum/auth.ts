@@ -234,6 +234,14 @@ export async function startSignIn(returnTo = '/forum'): Promise<void> {
   await authorize(returnTo)
 }
 
+export async function startPasswordChange(
+  returnTo = '/profile',
+): Promise<void> {
+  sessionStorage.setItem(AUTO_SIGN_IN_KEY, 'manual')
+  // Hosted recovery returns to login, then completes the same PKCE callback.
+  await authorize(returnTo, undefined, 'forgotPassword')
+}
+
 export async function tryAutomaticSignIn(
   returnTo: string,
   signal?: AbortSignal,
@@ -260,6 +268,7 @@ export async function tryAutomaticSignIn(
 async function authorize(
   returnTo: string,
   signal?: AbortSignal,
+  endpoint: 'oauth2/authorize' | 'forgotPassword' = 'oauth2/authorize',
 ): Promise<void> {
   const { domain, clientId, redirectUri } = config()
   if (new URL(redirectUri).origin !== location.origin) {
@@ -296,7 +305,7 @@ async function authorize(
     code_challenge_method: 'S256',
     code_challenge: challenge,
   })
-  location.assign(`${domain}/oauth2/authorize?${params}`)
+  location.assign(`${domain}/${endpoint}?${params}`)
 }
 
 let callback: { code: string; promise: Promise<string> } | undefined

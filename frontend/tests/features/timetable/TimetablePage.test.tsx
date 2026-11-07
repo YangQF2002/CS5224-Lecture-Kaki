@@ -8,6 +8,7 @@ import {
   within,
 } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router'
 import TimetablePage from '../../../src/features/timetable/TimetablePage.tsx'
 import {
   fetchModule,
@@ -108,7 +109,7 @@ function selectedModules() {
 }
 
 it('adds a tutorial without removing the existing lecture', async () => {
-  render(<TimetablePage />)
+  render(<TimetablePage />, { wrapper: MemoryRouter })
   await chooseModule()
   await chooseOption('Lecture', '1')
   fireEvent.click(screen.getByRole('button', { name: 'Add selected groups' }))
@@ -120,13 +121,13 @@ it('adds a tutorial without removing the existing lecture', async () => {
 })
 
 it('restores an added lesson group after remounting', async () => {
-  const page = render(<TimetablePage />)
+  const page = render(<TimetablePage />, { wrapper: MemoryRouter })
   await chooseModule()
   await chooseOption('Lecture', '1')
   fireEvent.click(screen.getByRole('button', { name: 'Add selected groups' }))
 
   page.unmount()
-  render(<TimetablePage />)
+  render(<TimetablePage />, { wrapper: MemoryRouter })
 
   expect(selectedModules().getByText('Lecture: 1')).toBeTruthy()
 })
@@ -149,7 +150,7 @@ it('shows available lessons when a selected module fails and clears the warning 
     if (moduleCode === 'CS2040') throw new Error('NUSMods returned HTTP 404')
     return module
   })
-  render(<TimetablePage />)
+  render(<TimetablePage />, { wrapper: MemoryRouter })
 
   await screen.findByText('Unable to load timetable for: CS2040.')
   const schedule = within(
@@ -171,7 +172,7 @@ it('shows available lessons when a selected module fails and clears the warning 
 })
 
 it('clears the picker when the semester changes', async () => {
-  render(<TimetablePage />)
+  render(<TimetablePage />, { wrapper: MemoryRouter })
   await chooseModule()
   await chooseOption('Lecture', '1')
   await chooseOption('Semester', 'Semester 2')
@@ -187,7 +188,7 @@ it('ignores a module response started before the semester changed', async () => 
       resolveModule = resolve
     }),
   )
-  render(<TimetablePage />)
+  render(<TimetablePage />, { wrapper: MemoryRouter })
   fireEvent.change(
     screen.getByPlaceholderText('Search by module code or title'),
     { target: { value: 'CS1010' } },
@@ -209,7 +210,7 @@ it('does not overwrite a new term with a delayed import', async () => {
       resolveModule = resolve
     }),
   )
-  render(<TimetablePage />)
+  render(<TimetablePage />, { wrapper: MemoryRouter })
   fireEvent.change(
     screen.getByPlaceholderText('Paste a NUSMods timetable share link'),
     {
@@ -232,7 +233,7 @@ it.each([
   '{"academicYear":"2026-2027","semester":1,"selections":null}',
 ])('recovers invalid saved state: %s', (stored) => {
   localStorage.setItem(STORAGE_KEY, stored)
-  render(<TimetablePage />)
+  render(<TimetablePage />, { wrapper: MemoryRouter })
   expect(screen.getByText('No modules added yet.')).toBeTruthy()
 })
 
@@ -243,7 +244,7 @@ it('falls back to an empty timetable when browser storage is unavailable', () =>
   vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
     throw new Error('Storage denied')
   })
-  render(<TimetablePage />)
+  render(<TimetablePage />, { wrapper: MemoryRouter })
   expect(screen.getByText('No modules added yet.')).toBeTruthy()
 })
 
@@ -261,7 +262,7 @@ it('does not clear a saved timetable or fetch incomplete years while editing the
     ],
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(initial))
-  render(<TimetablePage />)
+  render(<TimetablePage />, { wrapper: MemoryRouter })
   fireEvent.change(screen.getByRole('textbox', { name: 'Academic year' }), {
     target: { value: '202' },
   })

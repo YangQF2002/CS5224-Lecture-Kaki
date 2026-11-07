@@ -8,10 +8,14 @@ export type DiscoveryFilters = {
   buildings: string[]
   codes: string[]
   faculties: string[]
+  topics: string[]
+  // Limit results to the signed-in user's interest topics from their profile.
+  myTopics: boolean
   levels: number[]
   minSize: number
   query: string
   includeOnline: boolean
+  hideClashes: boolean
 }
 
 // Selects in-person sessions whose venue has no known building.
@@ -28,10 +32,13 @@ export const DEFAULT_FILTERS: DiscoveryFilters = {
   buildings: [],
   codes: [],
   faculties: [],
+  topics: [],
+  myTopics: false,
   levels: [],
   minSize: 0,
   query: '',
   includeOnline: false,
+  hideClashes: false,
 }
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -60,12 +67,15 @@ export function parseFilters(params: URLSearchParams): DiscoveryFilters {
     buildings: readList(params, 'buildings'),
     codes: readList(params, 'codes').map((code) => code.toUpperCase()),
     faculties: readList(params, 'faculties'),
+    topics: readList(params, 'topics'),
+    myTopics: params.get('mine') === '1',
     levels: readList(params, 'levels')
       .map(Number)
       .filter((level) => Number.isInteger(level) && level > 0),
     minSize: Number.isInteger(minSize) && minSize > 0 ? minSize : 0,
     query: params.get('q')?.trim() ?? '',
     includeOnline: params.get('online') === '1',
+    hideClashes: params.get('clashes') === 'hide',
   }
 }
 
@@ -77,6 +87,7 @@ export function filtersToParams(filters: DiscoveryFilters): URLSearchParams {
     ['buildings', filters.buildings],
     ['codes', filters.codes],
     ['faculties', filters.faculties],
+    ['topics', filters.topics],
     ['levels', filters.levels],
   ]
 
@@ -87,8 +98,10 @@ export function filtersToParams(filters: DiscoveryFilters): URLSearchParams {
   if (filters.from !== DEFAULT_FROM) params.set('from', filters.from)
   if (filters.to !== DEFAULT_TO) params.set('to', filters.to)
   if (filters.minSize > 0) params.set('minSize', String(filters.minSize))
+  if (filters.myTopics) params.set('mine', '1')
   if (filters.query) params.set('q', filters.query)
   if (filters.includeOnline) params.set('online', '1')
+  if (filters.hideClashes) params.set('clashes', 'hide')
 
   return params
 }
@@ -112,10 +125,24 @@ export function buildSearchText(modules: LectureModule[]): Map<string, string> {
   return new Map(
     modules.map((module) => [
       module.moduleCode,
-      [module.moduleCode, module.title, module.description ?? '']
+      [
+        module.moduleCode,
+        module.title,
+        module.description ?? '',
+        ...(module.topics ?? []),
+      ]
         .join(' ')
         .toLowerCase(),
     ]),
+  )
+}
+
+// Snapshots published before topic tagging have no topics.
+export function buildTopicsByCode(
+  modules: LectureModule[],
+): Map<string, string[]> {
+  return new Map(
+    modules.map((module) => [module.moduleCode, module.topics ?? []]),
   )
 }
 
@@ -123,6 +150,9 @@ export function filterSessions(
   sessions: LectureSession[],
   filters: DiscoveryFilters,
   searchText: Map<string, string>,
+  topicsByCode: Map<string, string[]> = new Map(),
+  // Null until the profile loads (or when signed out): "my topics" is then ignored.
+  interests: Set<string> | null = null,
 ): LectureSession[] {
   const from = toMinutes(filters.from)
   const to = toMinutes(filters.to)
@@ -130,6 +160,7 @@ export function filterSessions(
   const buildings = new Set(filters.buildings)
   const codes = new Set(filters.codes)
   const faculties = new Set(filters.faculties)
+  const topics = new Set(filters.topics)
   const levels = new Set(filters.levels)
   const terms = filters.query.toLowerCase().split(/\s+/).filter(Boolean)
 
@@ -152,6 +183,23 @@ export function filterSessions(
       return false
     }
     if (faculties.size > 0 && !faculties.has(session.faculty)) return false
+    if (
+      topics.size > 0 &&
+      !(topicsByCode.get(session.moduleCode) ?? []).some((topic) =>
+        topics.has(topic),
+      )
+    ) {
+      return false
+    }
+    if (
+      filters.myTopics &&
+      interests &&
+      !(topicsByCode.get(session.moduleCode) ?? []).some((topic) =>
+        interests.has(topic),
+      )
+    ) {
+      return false
+    }
     if (
       levels.size > 0 &&
       (session.level === null || !levels.has(session.level))

@@ -1,9 +1,3 @@
-.timetable-page {
-  max-width: 72rem;
-  margin: 2rem auto;
-  padding: 0 1.5rem 4rem;
-}
-
 .timetable-page header {
   margin-bottom: 2rem;
 }
@@ -35,12 +29,12 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid #dbe2ea;
+  border: 1px solid var(--border);
 }
 
 .search-results button {
   width: 100%;
-  color: #1f2937;
+  color: var(--ink);
   text-align: left;
   background: white;
   border: 0;
@@ -48,7 +42,7 @@
 }
 
 .search-results button:hover {
-  background: #eff6ff;
+  background: var(--accent-soft);
 }
 
 .group-picker {
@@ -62,7 +56,7 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.75rem 0;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border);
 }
 
 .selected-module ul {
@@ -76,9 +70,9 @@
 
 .lesson {
   padding: 0.8rem;
-  border-left: 0.35rem solid #2563eb;
+  border-left: 0.35rem solid var(--accent);
   border-radius: 0.35rem;
-  background: #eff6ff;
+  background: var(--accent-soft);
 }
 
 .lesson.conflict {
@@ -124,8 +118,8 @@
 
 .section-hint {
   margin: 0;
-  color: #64748b;
-  font-size: 0.86rem;
+  color: var(--muted);
+  font-size: var(--text-label);
 }
 
 .module-count {
@@ -134,9 +128,9 @@
   height: 1.6rem;
   place-items: center;
   border-radius: 999px;
-  color: #1e3a8a;
-  background: #dbeafe;
-  font-size: 0.8rem;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-size: var(--text-label);
   font-weight: 700;
 }
 
@@ -156,7 +150,7 @@
   border: 1px solid transparent;
   border-bottom: 1px solid transparent;
   border-radius: 0.65rem;
-  color: #172033;
+  color: var(--ink);
 }
 
 .module-card::before {
@@ -182,16 +176,16 @@
 .module-card .module-title {
   margin-top: 0.15rem;
   overflow-wrap: anywhere;
-  color: #475569;
-  font-size: 0.78rem;
+  color: var(--muted);
+  font-size: var(--text-small);
   line-height: 1.25;
 }
 
 .module-card .module-origin {
   display: block;
   margin-top: 0.35rem;
-  color: #64748b;
-  font-size: 0.72rem;
+  color: var(--muted);
+  font-size: var(--text-small);
   font-style: italic;
   font-weight: 700;
 }
@@ -199,8 +193,8 @@
 .module-card ul {
   margin: 0.55rem 0 0;
   padding: 0;
-  color: #334155;
-  font-size: 0.75rem;
+  color: var(--ink);
+  font-size: var(--text-small);
   list-style: none;
 }
 
@@ -215,7 +209,7 @@
   place-items: center;
   border: 0;
   border-radius: 999px;
-  color: #475569;
+  color: var(--muted);
   background: rgb(255 255 255 / 65%);
   font-size: 1.25rem;
   line-height: 1;
@@ -311,10 +305,10 @@
   place-items: center;
   align-items: center;
   justify-items: center;
-  border: 1px solid #bfdbfe;
+  border: 1px solid var(--border);
   border-radius: 0.4rem;
-  color: #1d4ed8;
-  background: #eff6ff;
+  color: var(--accent);
+  background: var(--accent-soft);
   font-size: 1.25rem;
   line-height: 0;
 }
@@ -331,8 +325,8 @@
 
 .week-navigator > span {
   min-width: 6.5rem;
-  color: #334155;
-  font-size: 0.9rem;
+  color: var(--ink);
+  font-size: var(--text-body);
   font-weight: 600;
   text-align: center;
 }
@@ -343,9 +337,9 @@
   min-width: 0;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
-  border: 1px solid #334155;
+  border: 1px solid var(--border);
   border-radius: 0.45rem;
-  background: #1e293b;
+  background: var(--surface);
 }
 
 .schedule-grid {
@@ -353,12 +347,12 @@
   width: max(100%, 59.6rem);
   grid-template-columns: 3.6rem minmax(0, 1fr);
   min-width: 59.6rem;
-  color: #cbd5e1;
-  font-size: 0.72rem;
+  color: var(--ink);
+  font-size: var(--text-small);
 }
 
 .schedule-corner {
-  border-bottom: 1px solid #475569;
+  border-bottom: 1px solid var(--muted);
 }
 
 .schedule-hours {
@@ -366,13 +360,13 @@
   display: grid;
   grid-template-columns: repeat(var(--schedule-columns), minmax(0, 1fr));
   min-height: 2.1rem;
-  border-bottom: 1px solid #475569;
+  border-bottom: 1px solid var(--muted);
 }
 
 .schedule-hours span {
   padding: 0.55rem 0.35rem 0.4rem;
-  border-left: 1px solid #334155;
-  color: #94a3b8;
+  border-left: 1px solid var(--border);
+  color: var(--muted);
 }
 
 .schedule-row {
@@ -384,16 +378,16 @@
   min-height: 4.8rem;
   align-items: center;
   justify-content: center;
-  border-bottom: 1px solid #334155;
-  color: #94a3b8;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
   font-weight: 600;
 }
 
 .day-track {
   position: relative;
   min-height: 4.8rem;
-  border-bottom: 1px solid #334155;
-  background: #1e293b;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .hour-line {
@@ -401,7 +395,7 @@
   top: 0;
   bottom: 0;
   width: 1px;
-  background: #334155;
+  background: var(--border);
 }
 
 .hour-line:nth-child(1) {
@@ -457,8 +451,8 @@
   box-sizing: border-box;
   border-left: 0.25rem solid currentColor;
   border-radius: 0.2rem;
-  color: #172033;
-  font-size: 0.68rem;
+  color: var(--ink);
+  font-size: var(--text-small);
   line-height: 1.25;
 }
 
@@ -471,12 +465,12 @@
 }
 
 .lesson-block strong {
-  font-size: 0.73rem;
+  font-size: var(--text-small);
 }
 .lesson-block small {
   margin-top: auto;
-  color: #475569;
-  font-size: 0.62rem;
+  color: var(--muted);
+  font-size: var(--text-small);
 }
 
 @media (max-width: 40rem) {
@@ -484,19 +478,145 @@
     align-items: flex-start;
   }
 
-  .timetable-page {
-    box-sizing: border-box;
-    width: 100%;
-    padding-right: 0.75rem;
-    padding-left: 0.75rem;
-  }
-
-  .panel {
+  .timetable-page .panel {
     overflow: hidden;
     padding: 1rem;
   }
 
   .module-card {
     padding-right: 2.75rem;
+  }
+}
+
+.timetable-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.timetable-heading .eyebrow {
+  margin-bottom: 0.6rem;
+}
+.timetable-heading > div > p:last-child {
+  color: var(--muted);
+  font-size: var(--text-body);
+}
+.timetable-heading .button-link {
+  flex-shrink: 0;
+}
+.timetable-setup {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  align-items: start;
+}
+.timetable-setup .panel {
+  min-width: 0;
+}
+.timetable-setup h2 {
+  font-size: 1.05rem;
+}
+.timetable-setup .inline-form {
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.timetable-setup .inline-form input {
+  flex-basis: 13rem;
+}
+.term-controls {
+  background: var(--soft);
+  border-color: transparent;
+  padding: 1rem 1.25rem;
+}
+.term-controls label {
+  max-width: 20rem;
+}
+.schedule-scroll {
+  border-radius: 0.65rem;
+}
+.schedule-hours {
+  background: var(--soft);
+  border-bottom-color: var(--border);
+}
+.schedule-corner {
+  background: var(--soft);
+  border-bottom-color: var(--border);
+}
+.day-label {
+  background: var(--soft);
+}
+.week-navigator button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+  border-color: var(--accent);
+}
+.section-heading {
+  margin-bottom: 0;
+}
+.module-card {
+  border-radius: 0.65rem;
+}
+.module-card.rose,
+.lesson-block.rose {
+  background: #f1dbdf;
+  border-color: #d8adb8;
+}
+.module-card.terracotta,
+.lesson-block.terracotta {
+  background: #efddd2;
+  border-color: #d5af98;
+}
+.module-card.apricot,
+.lesson-block.apricot {
+  background: #f5e7c9;
+  border-color: #e1c389;
+}
+.module-card.olive,
+.lesson-block.olive {
+  background: #e5e7cf;
+  border-color: #c5c99c;
+}
+.module-card.teal,
+.lesson-block.teal {
+  background: #dce9df;
+  border-color: #b2cfbc;
+}
+.module-card.sky,
+.lesson-block.sky {
+  background: #dfeaf0;
+  border-color: #b4cedb;
+}
+.module-card.lavender,
+.lesson-block.lavender {
+  background: #e7e1ef;
+  border-color: #c8badc;
+}
+.module-card.clay,
+.lesson-block.clay {
+  background: #e9dfd7;
+  border-color: #d0bbac;
+}
+.search-results {
+  overflow: hidden;
+  border-radius: 0.55rem;
+  margin-top: 0.5rem;
+}
+.search-results li + li {
+  border-top: 1px solid var(--border);
+}
+@media (max-width: 1100px) {
+  .timetable-setup {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+@media (max-width: 600px) {
+  .timetable-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .term-controls label {
+    max-width: none;
+    width: 100%;
   }
 }

@@ -14,17 +14,21 @@ _PK_PREFIX = "ROOM#"
 _SK_PREFIX = "MSG#"
 
 
-def make_message(room_id: str, content: str, author_id: str) -> dict:
+def make_message(
+    room_id: str, content: str, author_id: str, author_name: str | None = None
+) -> dict:
     """Build a DynamoDB item for a new message.
 
-    All time values are derived from a single server timestamp.
+    All time values are derived from a single server timestamp. The author's
+    username is stored as it was when posting; messages expire within a day,
+    so a renamed user's new name soon replaces the old one.
     """
     now = datetime.now(UTC)
     expires = now + timedelta(hours=_EXPIRY_HOURS)
     # SK is zero-padded milliseconds + UUID so items sort by insertion time.
     ts_ms = int(now.timestamp() * 1000)
     message_id = f"{ts_ms:020d}-{uuid4().hex}"
-    return {
+    item = {
         "PK": f"{_PK_PREFIX}{room_id}",
         "SK": f"{_SK_PREFIX}{message_id}",
         "message_id": message_id,
@@ -35,6 +39,9 @@ def make_message(room_id: str, content: str, author_id: str) -> dict:
         "expires_at": expires.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "ttl": int(expires.timestamp()),
     }
+    if author_name:
+        item["author_name"] = author_name
+    return item
 
 
 def is_expired(item: dict) -> bool:
@@ -46,6 +53,7 @@ def item_to_message(item: dict) -> MessageOut:
         message_id=item["message_id"],
         room_id=item["room_id"],
         author_id=item["author_id"],
+        author_name=item.get("author_name"),
         content=item["content"],
         posted_at=item["posted_at"],
         expires_at=item["expires_at"],

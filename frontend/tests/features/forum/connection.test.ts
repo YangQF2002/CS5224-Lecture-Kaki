@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // prettier-ignore
-import { completeSignIn, getAccessToken, SignInRequired, signOut, startSignIn, tryAutomaticSignIn } from '../../../src/features/forum/auth.ts'
+import { completeSignIn, getAccessToken, SignInRequired, signOut, startPasswordChange, startSignIn, tryAutomaticSignIn } from '../../../src/features/forum/auth.ts'
 // prettier-ignore
 import { ForumApiError, getConnectionTicket, postMessage } from '../../../src/features/forum/forumApi.ts'
-import { uploadPdf } from '../../../src/features/forum/forumPdf.ts'
+import { downloadPdf, uploadPdf } from '../../../src/features/forum/forumPdf.ts'
 import { subscribeToRoom } from '../../../src/features/forum/forumSocket.ts'
 
 vi.mock('../../../src/features/forum/forumApi.ts', async (original) => ({
@@ -54,6 +54,38 @@ describe('sign-in', () => {
     expect(url.searchParams.get('code_challenge_method')).toBe('S256')
     expect(url.searchParams.get('state')).toBe(pending.state)
     expect(pending.returnTo).toBe('/forum/selected-room')
+  })
+  it('opens hosted password recovery and completes sign-in with PKCE back to the current page', async () => {
+    const returnTo = '/?topics=Psychology#main-content'
+    await startPasswordChange(returnTo)
+    const pending = JSON.parse(sessionStorage.getItem(loginKey)!)
+    const url = new URL(vi.mocked(location.assign).mock.calls[0][0])
+    expect(url.origin).toBe('https://login.example')
+    expect(url.pathname).toBe('/forgotPassword')
+    expect(url.searchParams.get('client_id')).toBe('public-client')
+    expect(url.searchParams.get('response_type')).toBe('code')
+    expect(url.searchParams.get('scope')).toBe('openid')
+    expect(url.searchParams.get('state')).toBe(pending.state)
+    expect(url.searchParams.get('code_challenge_method')).toBe('S256')
+    const digest = new Uint8Array(
+      await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(pending.verifier),
+      ),
+    )
+    const challenge = btoa(String.fromCharCode(...digest))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')
+    expect(url.searchParams.get('code_challenge')).toBe(challenge)
+    const callbackUrl = new URL(url.searchParams.get('redirect_uri')!)
+    callbackUrl.searchParams.set('code', 'password-recovery-code')
+    callbackUrl.searchParams.set('state', pending.state)
+    expect(await completeSignIn(callbackUrl.href)).toBe(returnTo)
+    expect(fetcher).toHaveBeenCalledOnce()
+    const params = fetcher.mock.calls[0][1].body as URLSearchParams
+    expect(params.get('code_verifier')).toBe(pending.verifier)
+    expect(await getAccessToken()).toBe('new-token')
   })
   it('exchanges a valid callback once and restores the room', async () => {
     store(loginKey, {
@@ -342,4 +374,102 @@ it('does not start a message POST when cancelled during token refresh', async ()
   finish('test-token')
   await cancelled
   expect(fetcher).not.toHaveBeenCalled()
+})
+
+describe('PDF downloads', () => {
+  it('authorizes once then opens the signed S3 link without fetching PDF bytes', async () => {
+    const url =
+      'https://bucket.s3.ap-southeast-1.amazonaws.com/uploads/pdf?versionId=pinned&X-Amz-Signature=signed'
+    const blob = vi.fn()
+    const fetcher = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ url }),
+      blob,
+    })
+    vi.stubGlobal('fetch', fetcher)
+    const downloads: {
+      href: string
+      filename: string
+      referrerPolicy: string
+    }[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloads.push({
+        href: this.href,
+        filename: this.download,
+        referrerPolicy: this.referrerPolicy,
+      })
+    })
+    await downloadPdf(
+      'room/venue',
+      'message',
+      'lecture.pdf',
+      async () => 'token',
+      new AbortController().signal,
+    )
+    expect(fetcher).toHaveBeenCalledOnce()
+    expect(fetcher.mock.calls[0][0]).toContain(
+      'room%2Fvenue/messages/message/attachment',
+    )
+    expect(fetcher.mock.calls[0][1].headers.Authorization).toBe('Bearer token')
+    expect(downloads).toEqual([
+      { href: url, filename: 'lecture.pdf', referrerPolicy: 'no-referrer' },
+    ])
+    expect(blob).not.toHaveBeenCalled()
+  })
+
+  it('discards a signed link returned after cancellation', async () => {
+    const controller = new AbortController()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => {
+          controller.abort()
+          return { url: 'https://bucket.example/pdf' }
+        },
+      }),
+    )
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {})
+    await expect(
+      downloadPdf(
+        'room',
+        'message',
+        'notes.pdf',
+        async () => 'token',
+        controller.signal,
+      ),
+    ).rejects.toHaveProperty('name', 'AbortError')
+    expect(click).not.toHaveBeenCalled()
+  })
+
+  it.each([401, 404])(
+    'does not open a download when the API returns %s',
+    async (status) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: false,
+          status,
+          json: async () => ({ detail: 'PDF is no longer available' }),
+        }),
+      )
+      const click = vi
+        .spyOn(HTMLAnchorElement.prototype, 'click')
+        .mockImplementation(() => {})
+      await expect(
+        downloadPdf(
+          'room',
+          'message',
+          'notes.pdf',
+          async () => 'token',
+          new AbortController().signal,
+        ),
+      ).rejects.toBeInstanceOf(ForumApiError)
+      expect(click).not.toHaveBeenCalled()
+    },
+  )
 })

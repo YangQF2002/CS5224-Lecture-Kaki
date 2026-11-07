@@ -4,8 +4,9 @@ import {
   render,
   screen,
   within,
+  waitFor,
 } from '@testing-library/react'
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
+import { Link, MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import DiscoverPage from '../../../src/features/discovery/DiscoverPage.tsx'
 import {
@@ -16,6 +17,28 @@ import type {
   LectureSession,
   LectureSnapshot,
 } from '../../../src/features/discovery/types.ts'
+import { fetchModule } from '../../../src/features/timetable/nusmodsApi.ts'
+import {
+  loadTimetable,
+  saveTimetable,
+} from '../../../src/features/timetable/timetableStorage.ts'
+import {
+  roomIdFor,
+  roomPath,
+} from '../../../src/features/forum/roomCatalogue.ts'
+
+vi.mock(
+  '../../../src/features/timetable/nusmodsApi.ts',
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import('../../../src/features/timetable/nusmodsApi.ts')
+    >()),
+    fetchModule: vi.fn(),
+  }),
+)
+vi.mock('../../../src/features/timetable/timetableApi.ts', () => ({
+  saveRemoteTimetable: vi.fn().mockResolvedValue(undefined),
+}))
 
 vi.mock('../../../src/features/discovery/lectureApi.ts', () => ({
   fetchLectureSnapshot: vi.fn(),
@@ -109,7 +132,12 @@ const sessions: LectureSession[] = [
 
 function LocationProbe() {
   const location = useLocation()
-  return <output data-testid="location">{location.search}</output>
+  return (
+    <>
+      <output data-testid="location">{location.search}</output>
+      <Link to="/?q=biology">Browse biology</Link>
+    </>
+  )
 }
 
 function renderPage(url = '/') {
@@ -131,6 +159,29 @@ function renderPage(url = '/') {
 }
 
 beforeEach(() => {
+  localStorage.clear()
+  vi.mocked(fetchModule)
+    .mockReset()
+    .mockResolvedValue({
+      moduleCode: 'CS5224',
+      title: 'Cloud Computing',
+      semesterData: [
+        {
+          semester: 1,
+          timetable: [
+            {
+              classNo: '1',
+              day: 'Tuesday',
+              startTime: '1000',
+              endTime: '1200',
+              lessonType: 'Lecture',
+              venue: 'LT19',
+              weeks: [11],
+            },
+          ],
+        },
+      ],
+    })
   vi.mocked(fetchLectureSnapshot).mockReset().mockResolvedValue(snapshot)
   vi.mocked(fetchWeekSessions).mockReset().mockResolvedValue({
     week: 'week-11',
@@ -160,7 +211,7 @@ it('filters by keywords in the description and records them in the URL', async (
   renderPage()
   await screen.findByText('2 lectures in Week 11')
 
-  fireEvent.change(screen.getByLabelText('Keywords'), {
+  fireEvent.change(screen.getByLabelText('Search modules'), {
     target: { value: 'machine learning' },
   })
 
@@ -181,6 +232,7 @@ it('filters by building with counts for the selected week', async () => {
   renderPage()
   await screen.findByText('2 lectures in Week 11')
 
+  fireEvent.click(screen.getByText('Filters'))
   const buildings = screen.getByText('Buildings').closest('details')!
   fireEvent.click(within(buildings).getByLabelText(/COM1/))
 
@@ -199,7 +251,9 @@ it('toggles days and clears filters while keeping the week', async () => {
 
   expect(screen.getByText('2 lectures in Week 11')).toBeTruthy()
   expect(screen.getByTestId('location').textContent).toBe('?week=week-11')
-  expect((screen.getByLabelText('Keywords') as HTMLInputElement).value).toBe('')
+  expect(
+    (screen.getByLabelText('Search modules') as HTMLInputElement).value,
+  ).toBe('')
 })
 
 it('explains when lecture data cannot be loaded', async () => {
@@ -212,4 +266,87 @@ it('explains when lecture data cannot be loaded', async () => {
   expect(
     await screen.findByText(/Lecture data is unavailable right now/),
   ).toBeTruthy()
+})
+
+it('links each lecture to the discussion for its actual session and term', async () => {
+  renderPage()
+  const discussion = await screen.findByRole('link', {
+    name: 'Discuss CS1010 on 2026-10-27 at 10:00',
+  })
+  expect(discussion.getAttribute('href')).toBe(
+    roomPath(roomIdFor(sessions[0], pointer)),
+  )
+})
+
+it('keeps the search field in sync when another link changes the filters', async () => {
+  renderPage('/?q=programming')
+  await screen.findByText('1 lecture in Week 11')
+  fireEvent.click(screen.getByRole('link', { name: 'Browse biology' }))
+  expect(
+    (screen.getByLabelText('Search modules') as HTMLInputElement).value,
+  ).toBe('biology')
+  expect(screen.getByText('Synthetic biology')).toBeTruthy()
+  expect(screen.queryByText('Synthetic programming')).toBeNull()
+})
+
+function savedLecture() {
+  saveTimetable({
+    academicYear: '2026-2027',
+    semester: 1,
+    selections: [
+      {
+        moduleCode: 'CS5224',
+        moduleTitle: 'Cloud Computing',
+        lessonType: 'Lecture',
+        classNo: '1',
+      },
+    ],
+  })
+}
+
+it('checks real timetable overlaps before filtering clashes and preserves the filter in the URL', async () => {
+  savedLecture()
+  renderPage()
+  const checkbox = await screen.findByRole<HTMLInputElement>('checkbox', {
+    name: 'Hide clashes',
+  })
+  await waitFor(() => expect(checkbox.disabled).toBe(false))
+  expect(screen.getByText('Clashes with your timetable')).toBeTruthy()
+  fireEvent.click(checkbox)
+  expect(screen.getByText('1 lecture in Week 11')).toBeTruthy()
+  expect(screen.queryByText('Synthetic programming')).toBeNull()
+  expect(screen.getByText('Synthetic biology')).toBeTruthy()
+  expect(screen.getByTestId('location').textContent).toBe('?clashes=hide')
+})
+
+it('does not claim that lectures fit when timetable data cannot be loaded', async () => {
+  savedLecture()
+  vi.mocked(fetchModule).mockRejectedValue(new Error('Unavailable'))
+  renderPage('/?clashes=hide')
+  await screen.findAllByText('Timetable check unavailable')
+  expect(screen.queryByText('Fits your timetable')).toBeNull()
+  expect(screen.getByText('2 lectures in Week 11')).toBeTruthy()
+  expect(
+    screen.getByRole<HTMLInputElement>('checkbox', { name: 'Hide clashes' })
+      .disabled,
+  ).toBe(true)
+})
+
+it('adds and removes a discovered lecture using the card action', async () => {
+  renderPage()
+  const add = await screen.findByRole('button', {
+    name: 'Add CS1010 to timetable',
+  })
+  fireEvent.click(add)
+  expect(loadTimetable().selections).toEqual([
+    expect.objectContaining({ moduleCode: 'CS1010', source: 'discover' }),
+  ])
+  expect(
+    await screen.findByText('CS1010 added to your timetable.'),
+  ).toBeTruthy()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Remove CS1010 from timetable' }),
+  )
+  expect(loadTimetable().selections).toHaveLength(0)
+  expect(screen.getByText('CS1010 removed from your timetable.')).toBeTruthy()
 })
