@@ -8,6 +8,7 @@ from botocore.exceptions import ClientError
 
 from .academic_calendar import Semester, week_label
 from .lesson_types import LESSON_TYPE_CODES
+from .topics import TAXONOMY
 from .transform import group_by_date
 
 ROOT = "lectures"
@@ -72,6 +73,8 @@ def publish(
             for label, (monday, week_sessions) in weeks.items()
         ],
         "lessonTypes": LESSON_TYPE_CODES,
+        # Every topic a module can have; the Profile page offers these to choose from.
+        "topics": list(TAXONOMY),
     }
     for key, document in documents.items():
         _put_json(s3, bucket, key, document, generated_at)

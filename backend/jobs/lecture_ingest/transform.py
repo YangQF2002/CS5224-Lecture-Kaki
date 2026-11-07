@@ -6,6 +6,7 @@ from datetime import date
 
 from .academic_calendar import EARLY_CLOSURES, Semester, class_dates
 from .lesson_types import LESSON_TYPE_CODES
+from .topics import keyword_topics
 from .venues import building_for, is_online
 
 EXCLUDED_FACULTIES = frozenset({"NUS-ISS"})
@@ -121,6 +122,7 @@ def build_modules(module_info: list[dict], sessions: list[dict]) -> list[dict]:
             "level": module_level(m["moduleCode"]),
             "moduleCredit": m.get("moduleCredit"),
             "description": m.get("description"),
+            "topics": keyword_topics(m["title"]),
         }
         for m in sorted(module_info, key=lambda m: m["moduleCode"])
         if m["moduleCode"] in codes

@@ -1,9 +1,25 @@
 # Weekly NUSMods ingestion into the website bucket's lectures/ folder. Mirrors infra/ingest.yaml.
 # Build the package first: python3.14 backend/scripts/package_ingest.py (writes build/ingest.zip).
 
+variable "topic_model_id" {
+  type        = string
+  default     = "global.amazon.nova-2-lite-v1:0"
+  description = "Bedrock inference profile ID the ingestion uses to add topics to modules; empty disables it."
+  validation {
+    condition     = var.topic_model_id == "" || can(regex("^[a-z-]+\\.[a-z0-9-]+\\.[a-z0-9.:-]+$", var.topic_model_id))
+    error_message = "Use an inference profile ID such as <geo>.<provider>.<model>, or an empty string."
+  }
+}
+
 locals {
   ingest_function_name = "lecturekaki-${var.env}-ingest"
   ingest_zip           = "${path.module}/../../build/ingest.zip"
+}
+
+locals {
+  # An inference profile ID is a geography prefix plus the base model ID.
+  topic_model_parts   = split(".", var.topic_model_id)
+  topic_base_model_id = join(".", slice(local.topic_model_parts, 1, length(local.topic_model_parts)))
 }
 
 resource "aws_cloudwatch_log_group" "ingest" {
@@ -49,6 +65,27 @@ resource "aws_iam_role_policy" "ingest" {
   })
 }
 
+# Bedrock access for topic tagging, only when a model is set. Converse is
+# authorised as InvokeModel. A cross-region profile may route to any of its
+# regions; a global profile also names the model without a region.
+resource "aws_iam_role_policy" "ingest_topics" {
+  count = var.topic_model_id == "" ? 0 : 1
+  name  = "classify-topics"
+  role  = aws_iam_role.ingest.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = "bedrock:InvokeModel"
+      Resource = [
+        "arn:aws:bedrock:ap-southeast-1:${data.aws_caller_identity.current.account_id}:inference-profile/${var.topic_model_id}",
+        "arn:aws:bedrock:*::foundation-model/${local.topic_base_model_id}",
+        "arn:aws:bedrock:::foundation-model/${local.topic_base_model_id}",
+      ]
+    }]
+  })
+}
+
 resource "aws_lambda_function" "ingest" {
   function_name    = local.ingest_function_name
   description      = "NUSMods -> lecture JSON in the web bucket"
@@ -63,7 +100,8 @@ resource "aws_lambda_function" "ingest" {
 
   environment {
     variables = {
-      WEB_BUCKET = aws_s3_bucket.web.bucket
+      WEB_BUCKET     = aws_s3_bucket.web.bucket
+      TOPIC_MODEL_ID = var.topic_model_id
     }
   }
 

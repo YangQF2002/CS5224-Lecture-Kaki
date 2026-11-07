@@ -46,3 +46,22 @@ resource "aws_dynamodb_table" "forum" {
     enabled        = true
   }
 }
+
+# Topics each Cognito user is interested in, keyed like the timetable table.
+# Owned by Terraform, unlike the older tables above; it holds user data, so it
+# cannot be destroyed by accident.
+resource "aws_dynamodb_table" "profile" {
+  name                        = "lecture-kaki-profiles-${var.env}"
+  billing_mode                = "PAY_PER_REQUEST"
+  hash_key                    = "user_id"
+  deletion_protection_enabled = true
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}

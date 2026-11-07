@@ -14,6 +14,9 @@ function App() {
           <NavLink to="/timetable">My Timetable</NavLink>
           <NavLink to="/forum">Forum</NavLink>
         </nav>
+        <nav className="app-nav app-nav-account" aria-label="Account">
+          <NavLink to="/profile">Profile</NavLink>
+        </nav>
       </header>
       <Outlet />
     </>

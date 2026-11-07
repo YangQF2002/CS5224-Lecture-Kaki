@@ -1,3 +1,4 @@
+import type { TimetableLesson } from '../timetable/types.ts'
 import type { LectureModule, LectureSession } from './types.ts'
 
 type SessionCardProps = {
@@ -5,7 +6,22 @@ type SessionCardProps = {
   module: LectureModule | undefined
   addedToTimetable: boolean
   disableAdd: boolean
+  // Lessons in the user's timetable that overlap this session.
+  clashes?: TimetableLesson[]
   onAddToTimetable: () => void
+}
+
+// NUSMods lesson times are HHMM.
+function hhmm(time: string): string {
+  return `${time.slice(0, 2)}:${time.slice(2)}`
+}
+
+function describeClashes(clashes: TimetableLesson[]): string {
+  const labels = clashes.map(
+    (lesson) =>
+      `${lesson.moduleCode} ${lesson.lessonType} ${hhmm(lesson.startTime)}–${hhmm(lesson.endTime)}`,
+  )
+  return [...new Set(labels)].join(', ')
 }
 
 function SessionCard({
@@ -13,6 +29,7 @@ function SessionCard({
   module,
   addedToTimetable,
   disableAdd,
+  clashes = [],
   onAddToTimetable,
 }: SessionCardProps) {
   const venue = session.online
@@ -23,7 +40,9 @@ function SessionCard({
       : session.venue
 
   return (
-    <article className="session-card">
+    <article
+      className={`session-card${clashes.length > 0 ? ' has-clash' : ''}`}
+    >
       <div className="session-time">
         {session.startTime}–{session.endTime}
       </div>
@@ -32,6 +51,19 @@ function SessionCard({
           <span className="session-code">{session.moduleCode}</span>{' '}
           {session.moduleTitle}
         </h3>
+        {clashes.length > 0 && (
+          <p className="session-clash">
+            <span className="clash-tag">Clashes</span>
+            <span>with your timetable: {describeClashes(clashes)}</span>
+          </p>
+        )}
+        {module?.topics && module.topics.length > 0 && (
+          <ul className="session-topics" aria-label="Topics">
+            {module.topics.map((topic) => (
+              <li key={topic}>{topic}</li>
+            ))}
+          </ul>
+        )}
         <p className="session-meta">
           <span>{venue}</span>
           <span>Capacity {session.size}</span>

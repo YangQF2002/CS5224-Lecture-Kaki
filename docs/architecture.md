@@ -54,7 +54,7 @@ The [auth template](../infra/auth.yaml) sets access tokens to 15 minutes and ref
 
 ## Lecture snapshots and room identity
 
-Read `/lectures/current.json`, then use its `path` for `index.json`, `modules.json` and `weeks/<label>.json` or `days/<date>.json`. The [publisher](../backend/jobs/lecture_ingest/publish.py) completes the snapshot before switching the pointer. Snapshots use `public, max-age=86400, immutable`; the pointer uses `no-cache`. Empty data and same-semester session counts below half the previous run are rejected.
+Read `/lectures/current.json`, then use its `path` for `index.json`, `modules.json` (module details, including up to three topics: [title keywords](../backend/jobs/lecture_ingest/topics.py) first, then an [LLM on Bedrock](../backend/jobs/lecture_ingest/llm_topics.py) adds topics from descriptions, cached in `lectures/topic-cache.json`) and `weeks/<label>.json` or `days/<date>.json`. The [publisher](../backend/jobs/lecture_ingest/publish.py) completes the snapshot before switching the pointer. Snapshots use `public, max-age=86400, immutable`; the pointer uses `no-cache`. Empty data and same-semester session counts below half the previous run are rejected.
 
 Fields are defined by the [transformer](../backend/jobs/lecture_ingest/transform.py) and [frontend types](../frontend/src/features/discovery/types.ts). Coordinate format changes across producer, consumers and tests. Unknown capacity uses `size=0`; online or unmapped venues use `building=null`.
 

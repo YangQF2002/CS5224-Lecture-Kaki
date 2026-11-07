@@ -12,6 +12,7 @@ Terraform in [`infra/terraform`](../infra/terraform) manages the website, API an
 | Cognito pool/client/signup validation | `lecture-kaki-auth-dev`, [`infra/auth.yaml`](../infra/auth.yaml)                |
 | Timetable table                       | `lecture-kaki-timetable-dev`, [`infra/timetable.yaml`](../infra/timetable.yaml) |
 | Forum table                           | Existing retained `lecturekaki-dev-forum`                                       |
+| Profile table (interest topics)       | `infra/terraform/`, `lecture-kaki-profiles-terraform-dev`                       |
 | GitHub OIDC and deployment role       | `infra/terraform/github/`, separate state                                       |
 
 The original partial Terraform apply also created two unused tables and a signup log group. Keep them until cleanup is agreed. Existing CloudFormation hosting/API/ingestion stacks can be retired after cutover; preserve the auth and data resources. The certificate disk is protected with `prevent_destroy`; teardown requires explicit review.
