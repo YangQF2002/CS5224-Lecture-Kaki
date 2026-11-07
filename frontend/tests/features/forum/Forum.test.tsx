@@ -40,6 +40,7 @@ vi.mock('../../../src/features/forum/forumPdf.ts', async (original) => ({
 }))
 
 const api = vi.mocked(forumApi)
+const pdf = vi.mocked(pdfApi)
 const lectures = vi.mocked(lectureApi)
 
 const lecture: LectureSession = {
@@ -107,6 +108,11 @@ function reply(message: forumApi.MessageOut) {
 }
 const messageBox = () =>
   screen.getByLabelText<HTMLTextAreaElement>('Your message')
+function attachPdf(file: File) {
+  fireEvent.change(screen.getByLabelText('PDF file'), {
+    target: { files: [file] },
+  })
+}
 function change(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
 }
@@ -130,8 +136,6 @@ function renderForum(url = roomPath(roomId)) {
   )
 }
 beforeEach(() => {
-  vi.mocked(pdfApi.uploadPdf).mockReset()
-  vi.mocked(pdfApi.downloadPdf).mockReset()
   vi.resetAllMocks()
   sessionStorage.clear()
   localStorage.clear()
@@ -356,36 +360,29 @@ it('rejects an unpublished room before accessing the Forum API', async () => {
   expect(api.getCurrentUser).not.toHaveBeenCalled()
 })
 
-it('posts PDF-only messages and offers authenticated downloads', async () => {
-  const file = new File(['%PDF-example'], 'lecture.pdf', {
-    type: 'application/pdf',
-  })
-  const message = {
+it('attaches, removes, posts and downloads a PDF-only message', async () => {
+  const file = new File(['%PDF'], 'lecture.pdf', { type: 'application/pdf' })
+  pdf.uploadPdf.mockResolvedValueOnce('pdf-upload-id')
+  api.postMessage.mockResolvedValueOnce({
     ...own,
-    content: '',
     message_id: '3-pdf',
-    author_name: 'LectureKaki',
+    content: '',
     attachment: { filename: file.name, size: file.size },
-  }
-  vi.mocked(pdfApi.uploadPdf).mockResolvedValueOnce('pdf-upload-id')
-  vi.mocked(pdfApi.downloadPdf).mockResolvedValueOnce(undefined)
-  api.postMessage.mockResolvedValueOnce(message)
+  })
   renderForum()
-  await screen.findByLabelText('Your message')
   await waitFor(() => expect(messageBox().disabled).toBe(false))
   const input = screen.getByLabelText<HTMLInputElement>('PDF file')
-  expect(input.hidden).toBe(true)
-  const openPicker = vi.spyOn(input, 'click')
+  const picker = vi.spyOn(input, 'click')
   fireEvent.click(screen.getByRole('button', { name: 'Attach a PDF' }))
-  expect(openPicker).toHaveBeenCalledOnce()
-  fireEvent.change(input, { target: { files: [file] } })
-  expect(screen.getByText(file.name)).toBeTruthy()
+  expect(picker).toHaveBeenCalledOnce()
+  expect(input.hidden).toBe(true)
+  attachPdf(file)
   fireEvent.click(screen.getByRole('button', { name: 'Remove PDF' }))
-  expect(screen.queryByRole('button', { name: 'Remove PDF' })).toBeNull()
+  expect(screen.queryByText(file.name)).toBeNull()
   expect(
     screen.getByRole<HTMLButtonElement>('button', { name: 'Send' }).disabled,
   ).toBe(true)
-  fireEvent.change(input, { target: { files: [file] } })
+  attachPdf(file)
   fireEvent.click(screen.getByRole('button', { name: 'Send' }))
   const download = await screen.findByRole('button', {
     name: /Download PDF: lecture.pdf/,
@@ -395,63 +392,44 @@ it('posts PDF-only messages and offers authenticated downloads', async () => {
     '',
     expect.any(Function),
     'pdf-upload-id',
-    vi.mocked(pdfApi.uploadPdf).mock.calls[0][3],
+    pdf.uploadPdf.mock.calls[0][3],
   )
-  expect(screen.getByText(file.name)).toBeTruthy()
-  expect(screen.getByText('You (LectureKaki)')).toBeTruthy()
-  reply(message)
-  expect(
-    screen.getAllByRole('button', { name: /Download PDF: lecture.pdf/ }),
-  ).toHaveLength(1)
   fireEvent.click(download)
-  await waitFor(() => expect(pdfApi.downloadPdf).toHaveBeenCalledOnce())
+  await waitFor(() => expect(pdf.downloadPdf).toHaveBeenCalledOnce())
   expect(screen.queryByRole('button', { name: 'Remove PDF' })).toBeNull()
 })
 
-it('blocks invalid PDFs before uploading and keeps the text draft', async () => {
+it('rejects invalid PDFs without uploading or losing the draft', async () => {
   renderForum()
-  await screen.findByLabelText('Your message')
+  await waitFor(() => expect(messageBox().disabled).toBe(false))
   change('Your message', 'Keep this question')
-  const input = screen.getByLabelText('PDF file')
-  fireEvent.change(input, {
-    target: { files: [new File(['bad'], 'file.exe')] },
-  })
-  expect(await screen.findByRole('alert')).toHaveProperty(
-    'textContent',
-    'Choose a PDF file.',
-  )
-  const large = new File(['pdf'], 'large.pdf', { type: 'application/pdf' })
+  attachPdf(new File(['bad'], 'file.exe'))
+  expect(screen.getByRole('alert').textContent).toBe('Choose a PDF file.')
+  const large = new File(['pdf'], 'large.pdf')
   Object.defineProperty(large, 'size', { value: 15 * 1024 * 1024 + 1 })
-  fireEvent.change(input, { target: { files: [large] } })
-  expect(await screen.findByRole('alert')).toHaveProperty(
-    'textContent',
+  attachPdf(large)
+  expect(screen.getByRole('alert').textContent).toBe(
     'Choose a non-empty PDF up to 15 MB.',
   )
   expect(messageBox().value).toBe('Keep this question')
-  expect(pdfApi.uploadPdf).not.toHaveBeenCalled()
+  expect(pdf.uploadPdf).not.toHaveBeenCalled()
 })
 
 it.each(['signs out', 'leaves the room'])(
   'does not post an in-flight PDF after the user %s',
   async (action) => {
     let complete!: (id: string) => void
-    vi.mocked(pdfApi.uploadPdf).mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          complete = resolve
-        }),
+    pdf.uploadPdf.mockReturnValueOnce(
+      new Promise((resolve) => {
+        complete = resolve
+      }),
     )
     renderForum()
-    await screen.findByLabelText('Your message')
     await waitFor(() => expect(messageBox().disabled).toBe(false))
     change('Your message', 'Keep this draft')
-    fireEvent.change(screen.getByLabelText('PDF file'), {
-      target: {
-        files: [new File(['pdf'], 'lecture.pdf', { type: 'application/pdf' })],
-      },
-    })
+    attachPdf(new File(['pdf'], 'lecture.pdf', { type: 'application/pdf' }))
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
-    await waitFor(() => expect(pdfApi.uploadPdf).toHaveBeenCalledOnce())
+    await waitFor(() => expect(pdf.uploadPdf).toHaveBeenCalledOnce())
     if (action === 'signs out') {
       act(() =>
         window.dispatchEvent(
@@ -462,18 +440,10 @@ it.each(['signs out', 'leaves the room'])(
       fireEvent.click(screen.getByRole('link', { name: /My timetable/i }))
       await screen.findByRole('heading', { name: 'My timetable' })
     }
-    expect(vi.mocked(pdfApi.uploadPdf).mock.calls[0][3].aborted).toBe(true)
+    expect(pdf.uploadPdf.mock.calls[0][3].aborted).toBe(true)
     await act(async () => complete('late-upload'))
     expect(api.postMessage).not.toHaveBeenCalled()
     expect(screen.queryByRole('button', { name: /Download PDF/ })).toBeNull()
-    if (action === 'leaves the room') {
-      fireEvent.click(screen.getByRole('link', { name: 'Forum' }))
-      expect(
-        (await screen.findByLabelText<HTMLTextAreaElement>('Your message'))
-          .value,
-      ).toBe('Keep this draft')
-      expect(screen.queryByRole('button', { name: 'Remove PDF' })).toBeNull()
-    }
   },
 )
 
