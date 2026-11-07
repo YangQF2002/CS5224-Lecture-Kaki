@@ -21,6 +21,8 @@ export type LectureIndex = {
   sessionCount: number
   days: string[]
   weeks: LectureWeek[]
+  // Every topic a module can have; absent in snapshots published before topics.
+  topics?: string[]
 }
 
 export type LectureSession = {
@@ -50,6 +52,8 @@ export type LectureModule = {
   level: number | null
   moduleCredit: string | null
   description: string | null
+  // Absent in snapshots published before topic tagging.
+  topics?: string[]
 }
 
 export type WeekSessions = {

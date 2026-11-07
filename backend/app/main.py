@@ -9,6 +9,7 @@ from app.modules.auth import router as auth_router
 from app.modules.forum import router as forum_router
 from app.modules.forum.repository import ForumStorageUnavailable
 from app.modules.forum.service import frontend_origins
+from app.modules.profile import router as profile_router
 from app.modules.timetable import router as timetable_router
 
 app = FastAPI(
@@ -43,5 +44,6 @@ async def forum_storage_unavailable(_request, _error):
 
 app.include_router(auth_router)
 app.include_router(timetable_router)
+app.include_router(profile_router)
 app.include_router(health_router)
 app.include_router(forum_router)

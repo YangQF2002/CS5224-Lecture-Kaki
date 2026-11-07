@@ -8,6 +8,7 @@ import TimetablePage from './features/timetable/TimetablePage.tsx'
 import ForumPage from './features/forum/ForumPage.tsx'
 import ForumHome from './features/forum/ForumHome.tsx'
 import AuthCallback from './features/forum/AuthCallback.tsx'
+import ProfilePage from './features/profile/ProfilePage.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -18,6 +19,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="timetable" element={<TimetablePage />} />
           <Route path="forum" element={<ForumHome />} />
           <Route path="forum/:roomId" element={<ForumPage />} />
+          <Route path="profile" element={<ProfilePage />} />
           <Route path="auth/callback" element={<AuthCallback />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

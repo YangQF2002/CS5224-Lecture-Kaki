@@ -112,6 +112,11 @@ resource "aws_iam_role_policy" "api_tables" {
         Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
         Resource = data.aws_dynamodb_table.existing_timetable.arn
       },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem"]
+        Resource = aws_dynamodb_table.profile.arn
+      },
     ]
   })
 }
@@ -199,6 +204,7 @@ resource "aws_instance" "api" {
     COGNITO_DOMAIN=${var.existing_cognito_domain}
     DYNAMODB_TABLE=${data.aws_dynamodb_table.existing_forum.name}
     TIMETABLE_TABLE_NAME=${data.aws_dynamodb_table.existing_timetable.name}
+    PROFILE_TABLE_NAME=${aws_dynamodb_table.profile.name}
     FRONTEND_ORIGINS=${local.website_url}
     EOF
     chmod 600 /opt/lecture-kaki/api.env

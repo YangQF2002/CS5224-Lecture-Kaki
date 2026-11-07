@@ -4,7 +4,7 @@ A CS5224 project helping NUS students discover lectures beyond their enrolled mo
 
 Implemented features:
 
-- Lecture discovery with shareable filters for time, place, subject and keywords.
+- Lecture discovery with shareable filters for time, place, subject, topic and keywords.
 - Personal timetables with lesson selection, NUSMods import, clash highlighting, browser storage and account saving.
 - Lecture discussions with Cognito login, message history, owner-only deletion and live WebSocket updates.
 

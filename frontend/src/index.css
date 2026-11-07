@@ -44,6 +44,11 @@ select {
   gap: 0.25rem;
 }
 
+/* Account links sit at the right of the header. */
+.app-nav-account {
+  margin-left: auto;
+}
+
 .app-nav a {
   padding: 0.35rem 0.75rem;
   border-radius: 0.4rem;

@@ -94,6 +94,12 @@ label.checkbox {
   align-items: center;
 }
 
+.my-topics .filter-hint {
+  margin: 0.25rem 0 0;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
 .multi-select {
   border: 1px solid #94a3b8;
   border-radius: 0.4rem;
@@ -193,6 +199,45 @@ label.checkbox {
 
 .session-code {
   color: #1d4ed8;
+}
+
+.session-card.has-clash {
+  border-left-color: #d97706;
+}
+
+.session-clash {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  align-items: center;
+  margin: 0.35rem 0 0;
+  color: #92400e;
+  font-size: 0.85rem;
+}
+
+.clash-tag {
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  color: #92400e;
+  background: #fef3c7;
+  font-weight: 600;
+}
+
+.session-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session-topics li {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  color: #1e40af;
+  background: #eff6ff;
+  font-size: 0.8rem;
 }
 
 .session-meta {

@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import SelectField from '../../SelectField.tsx'
 import { getAccessToken } from '../forum/auth.ts'
+import { getProfile } from '../profile/profileApi.ts'
+import { fetchModule } from '../timetable/nusmodsApi.ts'
 import { saveRemoteTimetable } from '../timetable/timetableApi.ts'
 import { loadTimetable, saveTimetable } from '../timetable/timetableStorage.ts'
+import { expandSelections } from '../timetable/timetableUtils.ts'
 import {
   DEFAULT_TO,
   OTHER_VENUES,
   buildSearchText,
+  buildTopicsByCode,
   chooseDefaultWeek,
   codePrefix,
   filterSessions,
@@ -22,8 +26,11 @@ import {
 import { fetchLectureSnapshot, fetchWeekSessions } from './lectureApi.ts'
 import MultiSelect, { type MultiSelectOption } from './MultiSelect.tsx'
 import SessionCard from './SessionCard.tsx'
+import { sessionClashes, teachingWeek } from './timetableClashes.ts'
 import type {
+  NusmodsModule,
   Semester,
+  TimetableLesson,
   TimetableSelection,
   TimetableState,
 } from '../timetable/types.ts'
@@ -45,14 +52,15 @@ function formatTerm(acadYear: string, semester: number) {
 
 function countOptions(
   sessions: LectureSession[],
-  keyOf: (session: LectureSession) => string,
+  keyOf: (session: LectureSession) => string | string[],
   selected: string[],
   labelOf: (value: string) => string = (value) => value,
 ): MultiSelectOption[] {
   const counts = new Map<string, number>(selected.map((value) => [value, 0]))
   for (const session of sessions) {
-    const key = keyOf(session)
-    counts.set(key, (counts.get(key) ?? 0) + 1)
+    for (const key of [keyOf(session)].flat()) {
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
   }
   return [...counts]
     .map(([value, count]) => ({ value, label: labelOf(value), count }))
@@ -70,6 +78,20 @@ function DiscoverPage() {
   const [today] = useState(() => singaporeNow().date)
   const [shown, setShown] = useState({ key: '', count: PAGE_SIZE })
   const [timetable, setTimetable] = useState(loadTimetable)
+  // The signed-in user's interest topics; null when signed out or unavailable.
+  const [interests, setInterests] = useState<string[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getProfile(getAccessToken)
+      .then((profile) => {
+        if (!cancelled) setInterests(profile.topics)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -186,12 +208,53 @@ function DiscoverPage() {
       ),
     [timetableSelections],
   )
+  // Timetable lessons with times, from NUSMods, for marking clashing lectures.
+  // Kept with the selections they came from so stale results are never shown.
+  const [loadedLessons, setLoadedLessons] = useState<{
+    selections: TimetableSelection[]
+    lessons: TimetableLesson[]
+  }>({ selections: [], lessons: [] })
+  const timetableLessons =
+    loadedLessons.selections === timetableSelections
+      ? loadedLessons.lessons
+      : []
+  useEffect(() => {
+    if (!snapshot || timetableSelections.length === 0) return
+    let cancelled = false
+    const academicYear = snapshot.pointer.acadYear
+    const semester = snapshot.pointer.semester as Semester
+    const codes = [...new Set(timetableSelections.map((s) => s.moduleCode))]
+
+    // A module that fails to load is skipped rather than hiding every clash.
+    void Promise.allSettled(
+      codes.map((code) => fetchModule(academicYear, code)),
+    ).then((results) => {
+      if (cancelled) return
+      const modules: Record<string, NusmodsModule> = {}
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          modules[result.value.moduleCode] = result.value
+        }
+      }
+      setLoadedLessons({
+        selections: timetableSelections,
+        lessons: expandSelections(timetableSelections, modules, semester),
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [snapshot, timetableSelections])
   const addedLectureCodes = useMemo(
     () => new Set([...nusmodsLectureCodes, ...discoverLectureCodes]),
     [discoverLectureCodes, nusmodsLectureCodes],
   )
   const searchText = useMemo(
     () => buildSearchText(snapshot?.modules ?? []),
+    [snapshot],
+  )
+  const topicsByCode = useMemo(
+    () => buildTopicsByCode(snapshot?.modules ?? []),
     [snapshot],
   )
   const levels = useMemo(
@@ -202,9 +265,23 @@ function DiscoverPage() {
     [snapshot],
   )
 
+  const interestSet = useMemo(
+    () => (interests?.length ? new Set(interests) : null),
+    [interests],
+  )
+
   const results = useMemo(
-    () => (sessions ? filterSessions(sessions, activeFilters, searchText) : []),
-    [sessions, activeFilters, searchText],
+    () =>
+      sessions
+        ? filterSessions(
+            sessions,
+            activeFilters,
+            searchText,
+            topicsByCode,
+            interestSet,
+          )
+        : [],
+    [sessions, activeFilters, searchText, topicsByCode, interestSet],
   )
 
   const weekSessions = useMemo(() => sessions ?? [], [sessions])
@@ -235,6 +312,15 @@ function DiscoverPage() {
         filters.faculties,
       ),
     [weekSessions, filters.faculties],
+  )
+  const topicOptions = useMemo(
+    () =>
+      countOptions(
+        weekSessions,
+        (session) => topicsByCode.get(session.moduleCode) ?? [],
+        filters.topics,
+      ),
+    [weekSessions, topicsByCode, filters.topics],
   )
 
   const resultsKey = `${searchParams.toString()}|${selectedWeek?.week}`
@@ -418,6 +504,35 @@ function DiscoverPage() {
             />
           </label>
 
+          <div className="my-topics">
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={filters.myTopics && interestSet !== null}
+                disabled={interestSet === null}
+                onChange={(event) =>
+                  updateFilters({ myTopics: event.target.checked })
+                }
+              />
+              Only my topics
+            </label>
+            {interestSet === null && (
+              <p className="filter-hint">
+                {interests ? (
+                  <>
+                    Choose topics in your <Link to="/profile">Profile</Link>{' '}
+                    first.
+                  </>
+                ) : (
+                  <>
+                    <Link to="/profile">Log in</Link> to search your interest
+                    topics.
+                  </>
+                )}
+              </p>
+            )}
+          </div>
+
           <label>
             Week
             <SelectField
@@ -503,6 +618,15 @@ function DiscoverPage() {
             </label>
           </div>
 
+          {topicOptions.length > 0 && (
+            <MultiSelect
+              label="Topics"
+              options={topicOptions}
+              selected={filters.topics}
+              searchPlaceholder="Search topics"
+              onChange={(topics) => updateFilters({ topics })}
+            />
+          )}
           <MultiSelect
             label="Buildings"
             options={buildingOptions}
@@ -625,6 +749,11 @@ function DiscoverPage() {
                           session.moduleCode,
                         )}
                         disableAdd={nusmodsLectureCodes.has(session.moduleCode)}
+                        clashes={sessionClashes(
+                          session,
+                          teachingWeek(selectedWeek.week),
+                          timetableLessons,
+                        )}
                         onAddToTimetable={() =>
                           toggleLectureToTimetable(session)
                         }
