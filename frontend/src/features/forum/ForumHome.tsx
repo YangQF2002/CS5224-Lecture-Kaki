@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
 import SelectField from '../../SelectField.tsx'
+import Icon from '../../Icon.tsx'
 // prettier-ignore
 import { chooseDefaultWeek, singaporeNow, weekName } from '../discovery/discoveryFilters.ts'
 // prettier-ignore
@@ -110,12 +111,13 @@ function LecturePicker() {
       weekError === `${snapshot?.pointer.path}:${selectedWeek?.week}`)
 
   return (
-    <main className="forum-page forum-browser">
-      <header>
+    <main className="forum-page">
+      <header className="page-heading">
+        <p className="eyebrow">Better with a kaki</p>
         <h1>Lecture Forum</h1>
         <p>
-          Choose a lecture to join its discussion. Messages disappear after 24
-          hours.
+          New lecture, familiar faces. Choose a lecture to find your kaki.
+          Messages disappear after 24 hours.
         </p>
         {snapshot && (
           <p className="forum-term">
@@ -194,19 +196,25 @@ function LecturePicker() {
           <div className="forum-lecture-list">
             {sessions?.slice(0, visible).map((session) => (
               <article className="panel forum-lecture" key={session.id}>
-                <h2>
-                  {session.moduleCode} <span>{session.moduleTitle}</span>
-                </h2>
-                <p>
-                  {lectureDate(session.date)} · {lectureTime(session.startTime)}
-                  –{lectureTime(session.endTime)} · {session.venue}
-                </p>
+                <span className="forum-lecture-icon" aria-hidden="true">
+                  <Icon name="message" />
+                </span>
+                <div className="forum-lecture-copy">
+                  <h2>
+                    {session.moduleCode} <span>{session.moduleTitle}</span>
+                  </h2>
+                  <p>
+                    {lectureDate(session.date)} ·{' '}
+                    {lectureTime(session.startTime)}–
+                    {lectureTime(session.endTime)} · {session.venue}
+                  </p>
+                </div>
                 <Link
-                  className="forum-join"
+                  className="forum-join button-link secondary"
                   to={roomPath(roomIdFor(session, snapshot!.pointer))}
                   aria-label={`Join ${session.moduleCode} discussion on ${lectureDate(session.date)} at ${lectureTime(session.startTime)}`}
                 >
-                  Join discussion
+                  Join discussion <Icon name="arrow" />
                 </Link>
               </article>
             ))}

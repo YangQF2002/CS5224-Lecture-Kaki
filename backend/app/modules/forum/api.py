@@ -19,6 +19,7 @@ from fastapi import (
 from fastapi.concurrency import run_in_threadpool
 
 from app.modules.auth import CurrentUser, get_current_user
+from app.modules.profile import username_for
 
 from . import realtime, repository
 from .schemas import ConnectionTicket, MessageIn, MessageOut, MessagePage, RoomId
@@ -41,7 +42,9 @@ async def post_message(
     body: MessageIn,
     user: _Auth,
 ) -> MessageOut:
-    item = make_message(room_id, body.content, user.user_id)
+    # Posting still works, labelled "Student", if profiles are unavailable.
+    author_name = await run_in_threadpool(username_for, user.user_id)
+    item = make_message(room_id, body.content, user.user_id, author_name)
     await run_in_threadpool(repository.put_message, item)
     message = item_to_message(item)
     await realtime.hub.publish(

@@ -15,6 +15,7 @@ export type DiscoveryFilters = {
   minSize: number
   query: string
   includeOnline: boolean
+  hideClashes: boolean
 }
 
 // Selects in-person sessions whose venue has no known building.
@@ -37,6 +38,7 @@ export const DEFAULT_FILTERS: DiscoveryFilters = {
   minSize: 0,
   query: '',
   includeOnline: false,
+  hideClashes: false,
 }
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -73,6 +75,7 @@ export function parseFilters(params: URLSearchParams): DiscoveryFilters {
     minSize: Number.isInteger(minSize) && minSize > 0 ? minSize : 0,
     query: params.get('q')?.trim() ?? '',
     includeOnline: params.get('online') === '1',
+    hideClashes: params.get('clashes') === 'hide',
   }
 }
 
@@ -98,6 +101,7 @@ export function filtersToParams(filters: DiscoveryFilters): URLSearchParams {
   if (filters.myTopics) params.set('mine', '1')
   if (filters.query) params.set('q', filters.query)
   if (filters.includeOnline) params.set('online', '1')
+  if (filters.hideClashes) params.set('clashes', 'hide')
 
   return params
 }

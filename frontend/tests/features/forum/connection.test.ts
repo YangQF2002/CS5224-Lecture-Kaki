@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // prettier-ignore
-import { completeSignIn, getAccessToken, SignInRequired, signOut, startSignIn, tryAutomaticSignIn } from '../../../src/features/forum/auth.ts'
+import { completeSignIn, getAccessToken, SignInRequired, signOut, startPasswordChange, startSignIn, tryAutomaticSignIn } from '../../../src/features/forum/auth.ts'
 // prettier-ignore
 import { ForumApiError, getConnectionTicket } from '../../../src/features/forum/forumApi.ts'
 import { subscribeToRoom } from '../../../src/features/forum/forumSocket.ts'
@@ -53,6 +53,38 @@ describe('sign-in', () => {
     expect(url.searchParams.get('code_challenge_method')).toBe('S256')
     expect(url.searchParams.get('state')).toBe(pending.state)
     expect(pending.returnTo).toBe('/forum/selected-room')
+  })
+  it('opens hosted password recovery and completes sign-in with PKCE back to the current page', async () => {
+    const returnTo = '/?topics=Psychology#main-content'
+    await startPasswordChange(returnTo)
+    const pending = JSON.parse(sessionStorage.getItem(loginKey)!)
+    const url = new URL(vi.mocked(location.assign).mock.calls[0][0])
+    expect(url.origin).toBe('https://login.example')
+    expect(url.pathname).toBe('/forgotPassword')
+    expect(url.searchParams.get('client_id')).toBe('public-client')
+    expect(url.searchParams.get('response_type')).toBe('code')
+    expect(url.searchParams.get('scope')).toBe('openid')
+    expect(url.searchParams.get('state')).toBe(pending.state)
+    expect(url.searchParams.get('code_challenge_method')).toBe('S256')
+    const digest = new Uint8Array(
+      await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode(pending.verifier),
+      ),
+    )
+    const challenge = btoa(String.fromCharCode(...digest))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')
+    expect(url.searchParams.get('code_challenge')).toBe(challenge)
+    const callbackUrl = new URL(url.searchParams.get('redirect_uri')!)
+    callbackUrl.searchParams.set('code', 'password-recovery-code')
+    callbackUrl.searchParams.set('state', pending.state)
+    expect(await completeSignIn(callbackUrl.href)).toBe(returnTo)
+    expect(fetcher).toHaveBeenCalledOnce()
+    const params = fetcher.mock.calls[0][1].body as URLSearchParams
+    expect(params.get('code_verifier')).toBe(pending.verifier)
+    expect(await getAccessToken()).toBe('new-token')
   })
   it('exchanges a valid callback once and restores the room', async () => {
     store(loginKey, {

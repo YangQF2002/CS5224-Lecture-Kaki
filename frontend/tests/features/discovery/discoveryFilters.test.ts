@@ -72,6 +72,7 @@ it('round-trips filters through the query string and omits defaults', () => {
     minSize: 100,
     query: 'machine learning',
     includeOnline: true,
+    hideClashes: true,
   }
 
   const params = filtersToParams(filters)

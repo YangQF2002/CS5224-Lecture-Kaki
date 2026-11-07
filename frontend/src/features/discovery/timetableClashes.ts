@@ -2,6 +2,8 @@ import { lessonMeetsOn } from '../timetable/timetableUtils.ts'
 import type { TimetableLesson } from '../timetable/types.ts'
 import type { LectureSession } from './types.ts'
 
+export type TimetableCheck = 'empty' | 'loading' | 'ready' | 'unavailable'
+
 // "week-7" -> 7; recess, reading and exam weeks have no teaching-week number.
 export function teachingWeek(label: string): number | null {
   const match = /^week-(\d+)$/.exec(label)

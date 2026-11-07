@@ -5,8 +5,23 @@ const API_BASE = (
 ).replace(/\/$/, '')
 
 export type Profile = {
+  username: string
   topics: string[]
 }
+
+const profileListeners = new Set<(profile: Profile) => void>()
+
+export function subscribeToProfileUpdates(
+  listener: (profile: Profile) => void,
+) {
+  profileListeners.add(listener)
+  return () => {
+    profileListeners.delete(listener)
+  }
+}
+
+// Mirrors the API's rule; the server is the authority.
+export const USERNAME_PATTERN = /^[A-Za-z0-9_-]{3,20}$/
 
 class ProfileApiError extends Error {
   status: number
@@ -18,11 +33,12 @@ class ProfileApiError extends Error {
 }
 
 async function request(
+  path: string,
   getToken: () => Promise<string>,
   init: RequestInit = {},
 ): Promise<Profile> {
   const token = await getToken()
-  const response = await fetch(`${API_BASE}/profile`, {
+  const response = await fetch(`${API_BASE}/profile${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -43,12 +59,27 @@ async function request(
 }
 
 export function getProfile(getToken: () => Promise<string>): Promise<Profile> {
-  return request(getToken)
+  return request('', getToken)
 }
 
-export function saveProfile(
-  profile: Profile,
+export function saveTopics(
+  topics: string[],
   getToken: () => Promise<string>,
 ): Promise<Profile> {
-  return request(getToken, { method: 'PUT', body: JSON.stringify(profile) })
+  return request('/topics', getToken, {
+    method: 'PUT',
+    body: JSON.stringify({ topics }),
+  })
+}
+
+export async function saveUsername(
+  username: string,
+  getToken: () => Promise<string>,
+): Promise<Profile> {
+  const profile = await request('/username', getToken, {
+    method: 'PUT',
+    body: JSON.stringify({ username }),
+  })
+  for (const listener of profileListeners) listener(profile)
+  return profile
 }
