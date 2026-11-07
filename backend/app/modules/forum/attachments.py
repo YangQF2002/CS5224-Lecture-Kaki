@@ -3,6 +3,7 @@
 import re
 from datetime import datetime
 from io import BytesIO
+from threading import BoundedSemaphore
 from time import time
 from typing import Annotated
 from urllib.parse import quote
@@ -24,6 +25,8 @@ from .service import is_expired
 router = APIRouter(prefix="/rooms", tags=["Forum PDFs"])
 _Auth = Annotated[CurrentUser, Depends(get_current_user)]
 _UploadId = Annotated[str, Field(pattern=r"^[0-9a-f]{32}$")]
+# The MVP runs one worker; cap expensive reads/parsing without queuing threads.
+_validation_slots = BoundedSemaphore(2)
 
 
 class UploadIn(BaseModel):
@@ -104,6 +107,19 @@ def validate_pdf(data):
 def prepare_attachment(item):
     if item.get("attachment"):
         return item["attachment"]
+    if not _validation_slots.acquire(blocking=False):
+        raise HTTPException(
+            status_code=429,
+            detail="PDF checking is busy. Try Send again shortly.",
+            headers={"Retry-After": "1"},
+        )
+    try:
+        return _prepare_attachment(item)
+    finally:
+        _validation_slots.release()
+
+
+def _prepare_attachment(item):
     try:
         client, bucket = store.s3()
         metadata = client.head_object(Bucket=bucket, Key=item["key"])

@@ -495,3 +495,42 @@ it('keeps the reading position when older messages are prepended', async () => {
   await screen.findByText('Older message')
   expect(history.scrollTop).toBe(200)
 })
+
+it('keeps the uploaded PDF and draft when validation is busy, then retries', async () => {
+  pdf.uploadPdf
+    .mockImplementationOnce(async (...args) => {
+      args[5]('uploaded')
+      throw new forumApi.ForumApiError(
+        429,
+        'PDF checking is busy. Try Send again shortly.',
+      )
+    })
+    .mockResolvedValueOnce('uploaded')
+  api.postMessage.mockResolvedValueOnce({ ...own, message_id: 'retry-pdf' })
+  renderForum()
+  await waitFor(() => expect(messageBox().disabled).toBe(false))
+  change('Your message', 'Keep my draft')
+  attachPdf(new File(['pdf'], 'lecture.pdf', { type: 'application/pdf' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  expect(await screen.findByRole('alert')).toHaveProperty(
+    'textContent',
+    'PDF checking is busy. Try Send again shortly.',
+  )
+  expect(messageBox().value).toBe('Keep my draft')
+  expect(screen.getByRole('button', { name: 'Remove PDF' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  await waitFor(() => expect(api.postMessage).toHaveBeenCalledOnce())
+  expect(pdf.uploadPdf.mock.calls[1][6]).toBe('uploaded')
+})
+
+it('can continue a bounded empty history page using its cursor', async () => {
+  api.getMessages.mockResolvedValueOnce({ items: [], next_cursor: 'older' })
+  api.getMessages.mockResolvedValueOnce({ items: [own], next_cursor: null })
+  renderForum()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Load older messages' }),
+  )
+  await screen.findByText(own.content)
+  expect(api.getMessages).toHaveBeenCalledTimes(2)
+  expect(api.getMessages.mock.calls[1][2]).toBe('older')
+})

@@ -277,3 +277,130 @@ def test_unsupported_pdf_encryption_returns_validation_error(
     assert response.status_code == 422, response.text
     assert pdf.post(upload_id).status_code == 422
     assert client.get(f"{pdf.base}/messages", headers=auth()).json()["items"] == []
+
+
+def test_history_skips_old_keys_and_expired_cursors(client, auth, table, monkeypatch):
+    from app.modules.forum.service import encode_cursor
+
+    old = datetime.now(UTC) - timedelta(days=2)
+    for index in range(120):
+        item = make_message(ROOM, "expired", "student-a")
+        message_id = f"{int(old.timestamp() * 1000):020d}-{index:032x}"
+        item.update(
+            SK=f"MSG#{message_id}",
+            message_id=message_id,
+            posted_at=old.isoformat(),
+            expires_at=(old + timedelta(hours=24)).isoformat(),
+        )
+        table.put_item(Item=item)
+    reads = []
+    original = table.query
+
+    def query(**kwargs):
+        response = original(**kwargs)
+        reads.append(response["ScannedCount"])
+        return response
+
+    monkeypatch.setattr(table, "query", query)
+    response = client.get(path(), headers=auth()).json()
+    assert response == {"items": [], "next_cursor": None}
+    assert reads == [0]
+    reads.clear()
+    cursor = encode_cursor({"PK": f"ROOM#{ROOM}", "SK": item["SK"]}, ROOM)
+    assert (
+        client.get(path(), params={"cursor": cursor}, headers=auth()).json() == response
+    )
+    assert reads == []
+
+
+def test_history_returns_a_cursor_without_filling_through_expired_rows(
+    client, auth, table, monkeypatch
+):
+    from unittest.mock import Mock
+
+    timestamp = int((datetime.now(UTC) - timedelta(seconds=1)).timestamp() * 1000)
+    for index in range(4):
+        item = make_message(ROOM, "visible" if index == 0 else "expired", "student-a")
+        message_id = f"{timestamp + index:020d}-{index:032x}"
+        item.update(SK=f"MSG#{message_id}", message_id=message_id)
+        if index:
+            item["expires_at"] = (datetime.now(UTC) - timedelta(seconds=1)).isoformat()
+        table.put_item(Item=item)
+    query = Mock(wraps=table.query)
+    monkeypatch.setattr(table, "query", query)
+    first = client.get(path(), params={"limit": 2}, headers=auth()).json()
+    assert first["items"] == [] and first["next_cursor"]
+    assert query.call_count == 1
+    second = client.get(
+        path(), params={"limit": 2, "cursor": first["next_cursor"]}, headers=auth()
+    ).json()
+    assert [item["content"] for item in second["items"]] == ["visible"]
+    assert second["next_cursor"] is None and query.call_count == 2
+
+
+def test_pdf_validation_capacity_preserves_cached_and_text_posts(
+    client, auth, pdf, monkeypatch
+):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event, Lock
+
+    from app.modules.forum import attachments
+
+    ids = [pdf.upload()[0] for _ in range(4)]
+
+    def status(upload_id):
+        return client.get(f"{pdf.base}/attachment-uploads/{upload_id}", headers=auth())
+
+    assert status(ids[0]).status_code == 200
+    entered, release, lock = Event(), Event(), Lock()
+    original = attachments.read_pdf
+    active = 0
+
+    def read(attachment):
+        nonlocal active
+        with lock:
+            active += 1
+            if active == 2:
+                entered.set()
+        assert release.wait(5), "Validation gate was not released"
+        return original(attachment)
+
+    monkeypatch.setattr(attachments, "read_pdf", read)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        pending = [pool.submit(status, upload_id) for upload_id in ids[1:3]]
+        try:
+            assert entered.wait(5)
+            busy = status(ids[3])
+            assert busy.status_code == 429
+            assert busy.headers["retry-after"] == "1"
+            assert pdf.post(ids[0]).status_code == 201
+            assert (
+                client.post(
+                    f"{pdf.base}/messages",
+                    json={"content": "Text still works"},
+                    headers=auth(),
+                ).status_code
+                == 201
+            )
+        finally:
+            release.set()
+        assert all(request.result(timeout=10).status_code == 200 for request in pending)
+    assert status(ids[3]).status_code == 200
+
+
+def test_pdf_capacity_is_released_after_validation_errors(client, auth, pdf):
+    for _ in range(3):
+        upload_id, _, _ = pdf.upload(data=b"%PDF-invalid")
+        assert (
+            client.get(
+                f"{pdf.base}/attachment-uploads/{upload_id}", headers=auth()
+            ).status_code
+            == 422
+        )
+    upload_id, _, _ = pdf.upload()
+    assert (
+        client.get(
+            f"{pdf.base}/attachment-uploads/{upload_id}", headers=auth()
+        ).status_code
+        == 200
+    )
