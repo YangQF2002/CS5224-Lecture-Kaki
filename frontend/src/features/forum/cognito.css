@@ -1,0 +1,88 @@
+/* Cognito hosted UI (classic): colours from frontend/src/index.css.
+   Keep to Cognito's supported selectors and properties. */
+.background-customizable {
+  background-color: #f3f1eb;
+}
+.banner-customizable {
+  padding: 16px 24px 8px 24px;
+  background-color: #fcfbf8;
+}
+.label-customizable {
+  font-weight: 600;
+  color: #26312b;
+}
+.textDescription-customizable {
+  padding-top: 8px;
+  padding-bottom: 24px;
+  display: block;
+  font-size: 18px;
+  color: #26312b;
+}
+.idpDescription-customizable {
+  padding-top: 8px;
+  padding-bottom: 16px;
+  display: block;
+  font-size: 14px;
+  color: #6d746b;
+}
+.inputField-customizable {
+  width: 100%;
+  height: 48px;
+  color: #26312b;
+  background-color: #ffffff;
+  border: 1px solid #8b9687;
+  border-radius: 8px;
+}
+.inputField-customizable:focus {
+  border-color: #b44c34;
+  outline: 2px solid #b44c34;
+}
+.submitButton-customizable {
+  font-size: 16px;
+  font-weight: bold;
+  margin: 24px 0px 16px 0px;
+  height: 48px;
+  width: 100%;
+  color: #ffffff;
+  background-color: #b44c34;
+  border-color: #b44c34;
+}
+.submitButton-customizable:hover {
+  color: #ffffff;
+  background-color: #963c28;
+  border-color: #963c28;
+}
+.errorMessage-customizable {
+  margin: 16px 0px 16px 0px;
+  padding: 12px;
+  font-size: 14px;
+  width: 100%;
+  background: #f8ece5;
+  border: 1px solid #e3b8af;
+  color: #ad3737;
+  box-sizing: border-box;
+}
+.idpButton-customizable {
+  height: 48px;
+  width: 100%;
+  text-align: center;
+  margin-bottom: 12px;
+  color: #26312b;
+  background-color: #ffffff;
+  border-color: #8b9687;
+}
+.idpButton-customizable:hover {
+  color: #26312b;
+  background-color: #f3f1eb;
+  border-color: #8b9687;
+}
+.legalText-customizable {
+  color: #6d746b;
+  font-size: 14px;
+}
+.passwordCheck-notValid-customizable {
+  color: #ad3737;
+}
+.passwordCheck-valid-customizable {
+  color: #3e6951;
+}

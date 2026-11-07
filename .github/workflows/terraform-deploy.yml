@@ -110,7 +110,7 @@ jobs:
           terraform -chdir=infra/terraform apply -input=false tfplan
       - name: Read outputs
         run: |
-          for name in website_url web_bucket api_url cognito_domain cognito_client_id ingest_function_name; do
+          for name in website_url web_bucket api_url cognito_domain cognito_user_pool_id cognito_client_id ingest_function_name; do
             echo "$(echo "$name" | tr '[:lower:]' '[:upper:]')=$(terraform -chdir=infra/terraform output -raw "$name")" >> "$GITHUB_ENV"
           done
 
@@ -159,3 +159,5 @@ jobs:
           aws s3 sync frontend/dist/assets/ "s3://$WEB_BUCKET/assets/" --cache-control 'public, max-age=31536000, immutable'
           aws s3 sync frontend/dist/ "s3://$WEB_BUCKET/" --delete --exclude 'assets/*' --exclude 'lectures/*' --cache-control 'no-cache'
           echo "Deployed to $WEBSITE_URL" >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish Cognito theme
+        run: aws cognito-idp set-ui-customization --user-pool-id "$COGNITO_USER_POOL_ID" --client-id "$COGNITO_CLIENT_ID" --css file://frontend/src/features/forum/cognito.css --query UICustomization.CSSVersion --output text
