@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
-import { Link, Navigate, useNavigate, useSearchParams } from 'react-router'
+import { Link, Navigate, useSearchParams } from 'react-router'
 import SelectField from '../../SelectField.tsx'
 import Icon from '../../Icon.tsx'
 // prettier-ignore
@@ -8,14 +8,14 @@ import { chooseDefaultWeek, singaporeNow, weekName } from '../discovery/discover
 import { fetchLectureSnapshot, fetchWeekSessions } from '../discovery/lectureApi.ts'
 import type { LectureSnapshot, WeekSessions } from '../discovery/types.ts'
 // prettier-ignore
-import { lectureDate, lectureTime, parseRoomId, roomFromLink, roomIdFor, roomPath } from './roomCatalogue.ts'
+import { lectureDate, lectureTime, parseRoomId, roomIdFor, roomPath } from './roomCatalogue.ts'
 import { lastForumPath, lastRoom, rememberPicker } from './roomSession.ts'
+import ForumLayout from './ForumLayout.tsx'
 import './forum.css'
 const PAGE_SIZE = 30
 
 function LecturePicker() {
   const [params, setParams] = useSearchParams()
-  const navigate = useNavigate()
   useEffect(() => {
     rememberPicker(params)
   }, [params])
@@ -27,8 +27,6 @@ function LecturePicker() {
     data: WeekSessions
   } | null>(null)
   const [weekError, setWeekError] = useState('')
-  const [sharedLink, setSharedLink] = useState('')
-  const [linkError, setLinkError] = useState('')
   const [shown, setShown] = useState({ key: '', count: PAGE_SIZE })
   const query = params.get('q') ?? ''
   const selectedWeek =
@@ -111,7 +109,7 @@ function LecturePicker() {
       weekError === `${snapshot?.pointer.path}:${selectedWeek?.week}`)
 
   return (
-    <main className="forum-page">
+    <ForumLayout>
       <header className="page-heading">
         <p className="eyebrow">Better with a kaki</p>
         <h1>Lecture Forum</h1>
@@ -231,36 +229,7 @@ function LecturePicker() {
           )}
         </>
       )}
-      <details className="panel forum-shared-link">
-        <summary>Have a shared discussion link?</summary>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            const id = roomFromLink(sharedLink)
-            if (!id) {
-              setLinkError('Enter a valid Forum discussion link or room ID.')
-              return
-            }
-            navigate(roomPath(id))
-          }}
-        >
-          <label htmlFor="forum-shared-link">
-            Discussion link or room ID
-            <input
-              id="forum-shared-link"
-              value={sharedLink}
-              onChange={(event) => {
-                setSharedLink(event.target.value)
-                setLinkError('')
-              }}
-              required
-            />
-          </label>
-          <button type="submit">Open discussion</button>
-          {linkError && <p role="alert">{linkError}</p>}
-        </form>
-      </details>
-    </main>
+    </ForumLayout>
   )
 }
 

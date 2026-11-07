@@ -103,8 +103,15 @@ resource "aws_iam_role_policy" "api_tables" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Query"]
+        Effect = "Allow"
+        # Upload quotas and atomic upload claims use UpdateItem as well as PutItem.
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:Query",
+          "dynamodb:UpdateItem",
+        ]
         Resource = data.aws_dynamodb_table.existing_forum.arn
       },
       {
@@ -205,6 +212,7 @@ resource "aws_instance" "api" {
     DYNAMODB_TABLE=${data.aws_dynamodb_table.existing_forum.name}
     TIMETABLE_TABLE_NAME=${data.aws_dynamodb_table.existing_timetable.name}
     PROFILE_TABLE_NAME=${aws_dynamodb_table.profile.name}
+    FORUM_ATTACHMENTS_BUCKET=${data.aws_s3_bucket.forum_pdfs.bucket}
     FRONTEND_ORIGINS=${local.website_url}
     EOF
     chmod 600 /opt/lecture-kaki/api.env

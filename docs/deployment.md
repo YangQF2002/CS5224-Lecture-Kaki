@@ -6,14 +6,19 @@ Use PowerShell from the repository root in `ap-southeast-1`. Local setup is in [
 
 Terraform in [`infra/terraform`](../infra/terraform) manages the website, API and lecture ingestion. Its shared state is `s3://lecturekaki-tfstate-320465872576/lecture-kaki/terraform-dev.tfstate`, with versioning and S3 locking. The existing CloudFormation stacks retain ownership of Cognito and application data; Terraform reads the existing tables and uses the existing Cognito client. Do not import these resources into Terraform while CloudFormation still manages them.
 
-| Resource                              | Owner                                                                           |
-| ------------------------------------- | ------------------------------------------------------------------------------- |
-| Website, EC2 API, ingestion and alarm | `infra/terraform/`                                                              |
-| Cognito pool/client/signup validation | `lecture-kaki-auth-dev`, [`infra/auth.yaml`](../infra/auth.yaml)                |
-| Timetable table                       | `lecture-kaki-timetable-dev`, [`infra/timetable.yaml`](../infra/timetable.yaml) |
-| Forum table                           | Existing retained `lecturekaki-dev-forum`                                       |
-| Profile table (usernames, topics)     | `infra/terraform/`, `lecture-kaki-profiles-terraform-dev`                       |
-| GitHub OIDC and deployment role       | `infra/terraform/github/`, separate state                                       |
+| Resource                              | Owner                                                                                   |
+| ------------------------------------- | --------------------------------------------------------------------------------------- |
+| Website, EC2 API, ingestion and alarm | `infra/terraform/`                                                                      |
+| Cognito pool/client/signup validation | `lecture-kaki-auth-dev`, [`infra/auth.yaml`](../infra/auth.yaml)                        |
+| Timetable table                       | `lecture-kaki-timetable-dev`, [`infra/timetable.yaml`](../infra/timetable.yaml)         |
+| Forum table                           | Existing retained `lecturekaki-dev-forum`                                               |
+| Forum PDF bucket `lecturekaki-forum`  | CloudFormation `lecture-kaki-forum-pdfs-dev`, [`infra/forum.yaml`](../infra/forum.yaml) |
+| Profile table (usernames, topics)     | `infra/terraform/`, `lecture-kaki-profiles-terraform-dev`                               |
+| GitHub OIDC and deployment role       | `infra/terraform/github/`, separate state                                               |
+
+Terraform's `forum.tf` reads the existing PDF bucket and grants the API role access to `uploads/*`; `api.tf` passes its name as `FORUM_ATTACHMENTS_BUCKET` and permits Forum upload-record updates. Keep the bucket's policy, versioning, encryption, cleanup and public-access blocks under CloudFormation. Before deploying PDF uploads to a new website origin, the stack owner must include that exact HTTPS origin in the Forum stack's `FrontendOrigins`, preserving existing origins. Downloads navigate directly to signed S3 links and do not require GET CORS.
+
+PDF download links last at most 60 seconds and are capped by the message's 24-hour expiry. Deletion stops new links immediately and attempts to delete the pinned object version; an already-issued link can still work until it expires if physical deletion fails. A download started before expiry may finish afterward.
 
 The original partial Terraform apply also created two unused tables and a signup log group. Keep them until cleanup is agreed. Existing CloudFormation hosting/API/ingestion stacks can be retired after cutover; preserve the auth and data resources. The certificate disk is protected with `prevent_destroy`; teardown requires explicit review.
 

@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // prettier-ignore
 import { completeSignIn, getAccessToken, SignInRequired, signOut, startPasswordChange, startSignIn, tryAutomaticSignIn } from '../../../src/features/forum/auth.ts'
 // prettier-ignore
-import { ForumApiError, getConnectionTicket } from '../../../src/features/forum/forumApi.ts'
+import { ForumApiError, getConnectionTicket, postMessage } from '../../../src/features/forum/forumApi.ts'
+import { downloadPdf, uploadPdf } from '../../../src/features/forum/forumPdf.ts'
 import { subscribeToRoom } from '../../../src/features/forum/forumSocket.ts'
 
 vi.mock('../../../src/features/forum/forumApi.ts', async (original) => ({
@@ -227,5 +228,160 @@ describe('live connection', () => {
     })
     await vi.advanceTimersByTimeAsync(0)
     expect(Socket.instances).toHaveLength(0)
+  })
+})
+
+describe('PDF uploads', () => {
+  const file = new File(['pdf'], 'notes.pdf', { type: 'application/pdf' })
+  const headers = { 'Content-Type': 'application/pdf', 'If-None-Match': '*' }
+  const receipt = {
+    upload_id: 'upload-one',
+    url: 'https://bucket.example/upload',
+    headers,
+  }
+  const token = async () => 'token'
+
+  it('uploads with conditional headers and reuses its receipt when retrying', async () => {
+    const controller = new AbortController()
+    const uploaded = vi.fn()
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json(receipt))
+      .mockResolvedValueOnce(new Response())
+      .mockImplementation(async () => Response.json({ status: 'ready' }))
+    vi.stubGlobal('fetch', fetcher)
+    const id = await uploadPdf(
+      'room/venue',
+      file,
+      token,
+      controller.signal,
+      vi.fn(),
+      uploaded,
+    )
+    expect(id).toBe(receipt.upload_id)
+    expect(uploaded).toHaveBeenCalledWith(id)
+    expect(fetcher.mock.calls[0][0]).toContain(
+      'room%2Fvenue/attachment-uploads',
+    )
+    expect(fetcher.mock.calls[1]).toEqual([
+      receipt.url,
+      { method: 'PUT', body: file, headers, signal: controller.signal },
+    ])
+    expect(fetcher.mock.calls[2][1].headers.Authorization).toBe('Bearer token')
+    await uploadPdf(
+      'room/venue',
+      file,
+      token,
+      controller.signal,
+      vi.fn(),
+      uploaded,
+      id,
+    )
+    expect(fetcher).toHaveBeenCalledTimes(4)
+    expect(fetcher.mock.calls[3][0]).toContain('/attachment-uploads/upload-one')
+  })
+
+  it.each(['fails', 'is cancelled'])(
+    'stops before validation when a PUT %s',
+    async (outcome) => {
+      const controller = new AbortController()
+      const fetcher = vi
+        .fn()
+        .mockResolvedValueOnce(Response.json(receipt))
+        .mockImplementationOnce(async () => {
+          if (outcome === 'is cancelled') controller.abort()
+          return new Response(null, { status: outcome === 'fails' ? 403 : 200 })
+        })
+      vi.stubGlobal('fetch', fetcher)
+      await expect(
+        uploadPdf('room', file, token, controller.signal, vi.fn(), vi.fn()),
+      ).rejects.toMatchObject(
+        outcome === 'fails'
+          ? { message: 'PDF upload failed. Please retry.' }
+          : { name: 'AbortError' },
+      )
+      expect(fetcher).toHaveBeenCalledTimes(2)
+    },
+  )
+})
+
+it('does not start a message POST when cancelled during token refresh', async () => {
+  const controller = new AbortController()
+  const fetcher = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ message_id: 'late-message' }),
+  })
+  vi.stubGlobal('fetch', fetcher)
+  let finish!: (token: string) => void
+  const token = new Promise<string>((resolve) => {
+    finish = resolve
+  })
+  const request = postMessage(
+    'room',
+    'draft',
+    () => token,
+    undefined,
+    controller.signal,
+  )
+  const cancelled = expect(request).rejects.toHaveProperty('name', 'AbortError')
+  controller.abort()
+  finish('test-token')
+  await cancelled
+  expect(fetcher).not.toHaveBeenCalled()
+})
+
+describe('PDF downloads', () => {
+  function download(signal = new AbortController().signal) {
+    return downloadPdf(
+      'room/venue',
+      'message',
+      'lecture.pdf',
+      async () => 'token',
+      signal,
+    )
+  }
+
+  it('authorizes once and opens the signed S3 URL directly', async () => {
+    const url =
+      'https://bucket.example/pdf?versionId=pinned&X-Amz-Signature=signed'
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ url }))
+    vi.stubGlobal('fetch', fetcher)
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {})
+    await download()
+    expect(fetcher).toHaveBeenCalledOnce()
+    expect(fetcher.mock.calls[0][0]).toContain(
+      'room%2Fvenue/messages/message/attachment',
+    )
+    expect(fetcher.mock.calls[0][1].headers.Authorization).toBe('Bearer token')
+    expect(click).toHaveBeenCalledOnce()
+    expect(click.mock.contexts[0]).toMatchObject({
+      href: url,
+      download: 'lecture.pdf',
+      referrerPolicy: 'no-referrer',
+    })
+  })
+
+  it('discards a signed link returned after cancellation', async () => {
+    const controller = new AbortController()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => {
+          controller.abort()
+          return { url: 'https://bucket.example/pdf' }
+        },
+      }),
+    )
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {})
+    await expect(download(controller.signal)).rejects.toHaveProperty(
+      'name',
+      'AbortError',
+    )
+    expect(click).not.toHaveBeenCalled()
   })
 })

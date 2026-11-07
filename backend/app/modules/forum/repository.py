@@ -43,11 +43,16 @@ def put_message(item: dict[str, Any], *, table=None) -> None:
 
 
 def query_messages(
-    room_id: str, limit: int, exclusive_start_key: dict | None, *, table=None
+    room_id: str,
+    limit: int,
+    exclusive_start_key: dict | None,
+    *,
+    oldest_key: str,
+    table=None,
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
         "KeyConditionExpression": Key("PK").eq(f"ROOM#{room_id}")
-        & Key("SK").begins_with("MSG#"),
+        & Key("SK").between(oldest_key, "MSG#~"),
         "Limit": limit,
         "ScanIndexForward": False,
         "ConsistentRead": True,

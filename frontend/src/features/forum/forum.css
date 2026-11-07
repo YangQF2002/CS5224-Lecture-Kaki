@@ -14,6 +14,30 @@
   min-width: 0;
   width: 100%;
 }
+.composer-attach {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.composer-attach:hover:not(:disabled),
+.pdf-action:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+
+.composer-attach:disabled {
+  opacity: 0.5;
+}
+
 .forum-term {
   color: var(--muted);
   font-size: var(--text-small) !important;
@@ -97,10 +121,44 @@
   width: 0.9rem;
   height: 0.9rem;
 }
+.forum-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17rem;
+  align-items: start;
+  gap: 1.5rem;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 72rem;
+}
+.forum-content {
+  min-width: 0;
+}
 .forum-shared-link {
-  margin-top: 1.75rem;
-  background: transparent;
-  font-size: var(--text-label);
+  position: sticky;
+  top: 1.5rem;
+  margin: 0;
+  border-top: 3px solid var(--accent);
+}
+.forum-shared-link h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.forum-shared-link h2 svg {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--accent);
+}
+.forum-shared-link label {
+  font-size: 0.85rem;
+}
+.forum-shared-link p {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 .forum-shared-link form {
   display: grid;
@@ -364,16 +422,25 @@ button.load-older:hover:not(:disabled) {
   font-size: var(--text-small);
   font-weight: 600;
 }
-.composer-input {
+.composer-input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.25rem;
+  padding: 0.25rem;
   border: 1px solid #bfc8b7;
   border-radius: 0.75rem;
   background: var(--paper);
 }
-.composer-input:focus-within {
+.composer-input-row:focus-within {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px #b44c3417;
 }
 .composer textarea {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  border-radius: 0.5rem;
+  font: inherit;
   display: block;
   width: 100%;
   min-height: 4.5rem;
@@ -499,6 +566,98 @@ button.load-older:hover:not(:disabled) {
 @media (pointer: coarse) {
   .chat-tools button,
   button.message-delete {
+    min-height: 2.75rem;
+  }
+}
+
+.pdf-attachment {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: min(24rem, 100%);
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #dbe2ea;
+  border-radius: 0.5rem;
+  background: #f8fafc;
+}
+.message .pdf-attachment {
+  margin-top: 0.5rem;
+}
+.message > .pdf-attachment:first-child,
+.message-header + .pdf-attachment {
+  margin-top: 0;
+}
+.pdf-file-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2.25rem;
+  color: #b42336;
+}
+.pdf-file-icon svg {
+  width: 1.65rem;
+  height: 2rem;
+}
+.pdf-file-icon > span {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  padding: 0 0.2rem;
+  border-radius: 0.2rem;
+  background: #ffe9ed;
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+.pdf-info {
+  flex: 1;
+  min-width: 0;
+}
+.pdf-filename {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+.pdf-size {
+  display: block;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+.pdf-action {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: #64748b;
+  font-size: 1.25rem;
+}
+.pdf-action svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+@media (max-width: 56rem) {
+  .forum-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .forum-shared-link {
+    position: static;
+    grid-row: 1;
+  }
+}
+@media (pointer: coarse) {
+  .pdf-action {
+    width: 2.75rem;
     min-height: 2.75rem;
   }
 }

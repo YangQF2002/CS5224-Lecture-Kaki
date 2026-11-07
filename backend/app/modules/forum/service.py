@@ -57,6 +57,7 @@ def item_to_message(item: dict) -> MessageOut:
         content=item["content"],
         posted_at=item["posted_at"],
         expires_at=item["expires_at"],
+        attachment=item.get("attachment"),
     )
 
 
@@ -102,40 +103,26 @@ def collect_page(
     *,
     table=None,
 ) -> tuple[list[MessageOut], str | None]:
-    """Collect up to `limit` unexpired messages, querying as many times as needed.
+    """Read one bounded page within the message access window.
 
-    Returns (items_oldest_first, next_cursor).
+    A page may be partial or empty after expiry filtering; its cursor still
+    allows the caller to continue without an unbounded server-side refill.
     """
-    collected: list[MessageOut] = []
-    last_key: dict | None = start_key
-    exhausted = False
-
-    while len(collected) < limit and not exhausted:
-        remaining = limit - len(collected)
-        # On retries caused by expired items, fetch larger batches to avoid
-        # spinning. First pass uses exactly `remaining` to preserve cursor semantics.
-        batch = (
-            remaining
-            if len(collected) == 0 and last_key == start_key
-            else min(remaining * 4, 1000)
-        )
-        response = repository.query_messages(room_id, batch, last_key, table=table)
-        items = response.get("Items", [])
-        last_key = response.get("LastEvaluatedKey")
-        for index, item in enumerate(items):
-            if not is_expired(item):
-                collected.append(item_to_message(item))
-            if len(collected) == limit:
-                if index + 1 < len(items):
-                    # Resume after the last returned record, not the larger batch.
-                    last_key = {"PK": item["PK"], "SK": item["SK"]}
-                break
-        if not last_key:
-            exhausted = True
-
-    # DynamoDB returned newest-first; reverse so the page is oldest-first.
+    cutoff = datetime.now(UTC) - timedelta(hours=_EXPIRY_HOURS)
+    oldest_key = f"{_SK_PREFIX}{int(cutoff.timestamp() * 1000):020d}"
+    # A cursor can age out between requests. There are then no older live rows.
+    if start_key and not oldest_key <= start_key["SK"] <= "MSG#~":
+        return [], None
+    response = repository.query_messages(
+        room_id, limit, start_key, oldest_key=oldest_key, table=table
+    )
+    collected = [
+        item_to_message(item)
+        for item in response.get("Items", [])
+        if not is_expired(item)
+    ]
     collected.reverse()
-
+    last_key = response.get("LastEvaluatedKey")
     next_cursor = encode_cursor(last_key, room_id) if last_key else None
     return collected, next_cursor
 

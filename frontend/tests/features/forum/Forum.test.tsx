@@ -7,6 +7,7 @@ import * as lectureApi from '../../../src/features/discovery/lectureApi.ts'
 // prettier-ignore
 import type { LectureSession, LectureSnapshot } from '../../../src/features/discovery/types.ts'
 import * as forumApi from '../../../src/features/forum/forumApi.ts'
+import * as pdfApi from '../../../src/features/forum/forumPdf.ts'
 import ForumHome from '../../../src/features/forum/ForumHome.tsx'
 import ForumPage from '../../../src/features/forum/ForumPage.tsx'
 // prettier-ignore
@@ -30,7 +31,16 @@ vi.mock('../../../src/features/forum/forumSocket.ts', () => ({
   subscribeToRoom: vi.fn(),
 }))
 
+vi.mock('../../../src/features/forum/forumPdf.ts', async (original) => ({
+  ...(await original<
+    typeof import('../../../src/features/forum/forumPdf.ts')
+  >()),
+  uploadPdf: vi.fn(),
+  downloadPdf: vi.fn(),
+}))
+
 const api = vi.mocked(forumApi)
+const pdf = vi.mocked(pdfApi)
 const lectures = vi.mocked(lectureApi)
 
 const lecture: LectureSession = {
@@ -98,6 +108,11 @@ function reply(message: forumApi.MessageOut) {
 }
 const messageBox = () =>
   screen.getByLabelText<HTMLTextAreaElement>('Your message')
+function attachPdf(file: File) {
+  fireEvent.change(screen.getByLabelText('PDF file'), {
+    target: { files: [file] },
+  })
+}
 function change(label: string, value: string) {
   fireEvent.change(screen.getByLabelText(label), { target: { value } })
 }
@@ -205,6 +220,124 @@ it('returns to the picker with its filters when that was the last Forum screen',
   ).toBeTruthy()
 })
 
+it('opens shared links from the picker and another room while preserving drafts', async () => {
+  renderForum('/forum?browse=1&week=week-10')
+  await screen.findByRole('heading', { name: 'Lecture Forum' })
+  const panel = screen.getByRole('complementary', {
+    name: 'Have a shared discussion link?',
+  })
+  expect(
+    panel.contains(screen.getByLabelText('Discussion link or room ID')),
+  ).toBe(true)
+  change('Discussion link or room ID', 'invalid-room')
+  fireEvent.click(screen.getByRole('button', { name: 'Open discussion' }))
+  expect(await screen.findByRole('alert')).toHaveProperty(
+    'textContent',
+    'Enter a valid Forum discussion link or room ID.',
+  )
+  expect(api.getCurrentUser).not.toHaveBeenCalled()
+  change('Discussion link or room ID', `${location.origin}${roomPath(roomId)}`)
+  fireEvent.click(screen.getByRole('button', { name: 'Open discussion' }))
+  await screen.findByLabelText('Your message')
+  change('Your message', 'Keep my question for this room')
+  change('Discussion link or room ID', `${laterLecture.id}@2026-2027@1`)
+  fireEvent.click(screen.getByRole('button', { name: 'Open discussion' }))
+  await screen.findByRole('heading', { name: 'CS5224 discussion' })
+  expect(messageBox().value).toBe('')
+  change('Discussion link or room ID', roomId)
+  fireEvent.click(screen.getByRole('button', { name: 'Open discussion' }))
+  await screen.findByRole('heading', { name: 'BT1101 discussion' })
+  expect(messageBox().value).toBe('Keep my question for this room')
+})
+
+it.each(['LT11', 'COM1-02/01.1'])(
+  'opens the exact copied link for a %s venue and confirms an already-open room',
+  async (venue) => {
+    const selected = {
+      ...lecture,
+      venue,
+      id: lecture.id.replace('LT11', venue),
+    }
+    const selectedId = `${selected.id}@2026-2027@1`
+    lectures.fetchWeekSessions.mockResolvedValue({
+      ...weeks[0],
+      sessions: [selected],
+    })
+    let copiedLink = ''
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: vi.fn(async (value: string) => {
+          copiedLink = value
+        }),
+      },
+    })
+    try {
+      renderForum(roomPath(selectedId))
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Copy discussion link' }),
+      )
+      await screen.findByText('Discussion link copied.')
+      expect(copiedLink).toBe(`${location.origin}${roomPath(selectedId)}`)
+      fireEvent.click(
+        screen.getByRole('link', { name: 'Choose another lecture' }),
+      )
+      await screen.findByRole('heading', { name: 'Lecture Forum' })
+      change('Discussion link or room ID', copiedLink)
+      fireEvent.click(screen.getByRole('button', { name: 'Open discussion' }))
+      await screen.findByRole('heading', { name: 'BT1101 discussion' })
+      await waitFor(() => expect(messageBox().disabled).toBe(false))
+      expect(api.getMessages).toHaveBeenLastCalledWith(
+        selectedId,
+        expect.any(Function),
+      )
+      change('Your message', 'Keep this draft when reopening the current link')
+      change('Discussion link or room ID', copiedLink)
+      fireEvent.click(screen.getByRole('button', { name: 'Open discussion' }))
+      await screen.findByText('This discussion is already open.')
+      expect(messageBox().value).toBe(
+        'Keep this draft when reopening the current link',
+      )
+      change('Discussion link or room ID', 'invalid-room')
+      expect(screen.queryByText('This discussion is already open.')).toBeNull()
+    } finally {
+      if (clipboard) Object.defineProperty(navigator, 'clipboard', clipboard)
+      else Reflect.deleteProperty(navigator, 'clipboard')
+    }
+  },
+)
+
+it.each(['lecture details', 'message history'])(
+  'retries a shared link after %s temporarily fail to load',
+  async (failure) => {
+    if (failure === 'lecture details') {
+      lectures.fetchLectureSnapshot.mockRejectedValueOnce(
+        new Error('Temporary lecture data failure'),
+      )
+    } else {
+      api.getMessages.mockRejectedValueOnce(new forumApi.ForumApiError(503))
+    }
+    renderForum()
+    await screen.findByRole('alert')
+    if (failure === 'lecture details')
+      expect(api.getCurrentUser).not.toHaveBeenCalled()
+    change(
+      'Discussion link or room ID',
+      `${location.origin}${roomPath(roomId)}`,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Open discussion' }))
+    await screen.findByRole('heading', { name: 'BT1101 discussion' })
+    await waitFor(() => expect(messageBox().disabled).toBe(false))
+    expect(
+      failure === 'lecture details'
+        ? lectures.fetchLectureSnapshot
+        : api.getMessages,
+    ).toHaveBeenCalledTimes(2)
+    expect(screen.queryByText('This discussion is already open.')).toBeNull()
+  },
+)
+
 it('clears protected content when another tab signs out', async () => {
   renderForum()
   await screen.findByText('Hello lecture')
@@ -226,6 +359,93 @@ it('rejects an unpublished room before accessing the Forum API', async () => {
   ).toBeTruthy()
   expect(api.getCurrentUser).not.toHaveBeenCalled()
 })
+
+it('attaches, removes, posts and downloads a PDF-only message', async () => {
+  const file = new File(['%PDF'], 'lecture.pdf', { type: 'application/pdf' })
+  pdf.uploadPdf.mockResolvedValueOnce('pdf-upload-id')
+  api.postMessage.mockResolvedValueOnce({
+    ...own,
+    message_id: '3-pdf',
+    content: '',
+    attachment: { filename: file.name, size: file.size },
+  })
+  renderForum()
+  await waitFor(() => expect(messageBox().disabled).toBe(false))
+  const input = screen.getByLabelText<HTMLInputElement>('PDF file')
+  const picker = vi.spyOn(input, 'click')
+  fireEvent.click(screen.getByRole('button', { name: 'Attach a PDF' }))
+  expect(picker).toHaveBeenCalledOnce()
+  expect(input.hidden).toBe(true)
+  attachPdf(file)
+  fireEvent.click(screen.getByRole('button', { name: 'Remove PDF' }))
+  expect(screen.queryByText(file.name)).toBeNull()
+  expect(
+    screen.getByRole<HTMLButtonElement>('button', { name: 'Send' }).disabled,
+  ).toBe(true)
+  attachPdf(file)
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  const download = await screen.findByRole('button', {
+    name: /Download PDF: lecture.pdf/,
+  })
+  expect(api.postMessage).toHaveBeenCalledWith(
+    roomId,
+    '',
+    expect.any(Function),
+    'pdf-upload-id',
+    pdf.uploadPdf.mock.calls[0][3],
+  )
+  fireEvent.click(download)
+  await waitFor(() => expect(pdf.downloadPdf).toHaveBeenCalledOnce())
+  expect(screen.queryByRole('button', { name: 'Remove PDF' })).toBeNull()
+})
+
+it('rejects invalid PDFs without uploading or losing the draft', async () => {
+  renderForum()
+  await waitFor(() => expect(messageBox().disabled).toBe(false))
+  change('Your message', 'Keep this question')
+  attachPdf(new File(['bad'], 'file.exe'))
+  expect(screen.getByRole('alert').textContent).toBe('Choose a PDF file.')
+  const large = new File(['pdf'], 'large.pdf')
+  Object.defineProperty(large, 'size', { value: 15 * 1024 * 1024 + 1 })
+  attachPdf(large)
+  expect(screen.getByRole('alert').textContent).toBe(
+    'Choose a non-empty PDF up to 15 MB.',
+  )
+  expect(messageBox().value).toBe('Keep this question')
+  expect(pdf.uploadPdf).not.toHaveBeenCalled()
+})
+
+it.each(['signs out', 'leaves the room'])(
+  'does not post an in-flight PDF after the user %s',
+  async (action) => {
+    let complete!: (id: string) => void
+    pdf.uploadPdf.mockReturnValueOnce(
+      new Promise((resolve) => {
+        complete = resolve
+      }),
+    )
+    renderForum()
+    await waitFor(() => expect(messageBox().disabled).toBe(false))
+    change('Your message', 'Keep this draft')
+    attachPdf(new File(['pdf'], 'lecture.pdf', { type: 'application/pdf' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+    await waitFor(() => expect(pdf.uploadPdf).toHaveBeenCalledOnce())
+    if (action === 'signs out') {
+      act(() =>
+        window.dispatchEvent(
+          new StorageEvent('storage', { key: 'lecturekaki:sign-out:v1' }),
+        ),
+      )
+    } else {
+      fireEvent.click(screen.getByRole('link', { name: /My timetable/i }))
+      await screen.findByRole('heading', { name: 'My timetable' })
+    }
+    expect(pdf.uploadPdf.mock.calls[0][3].aborted).toBe(true)
+    await act(async () => complete('late-upload'))
+    expect(api.postMessage).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Download PDF/ })).toBeNull()
+  },
+)
 
 it('follows live replies only while the reader is at the bottom of the chat', async () => {
   renderForum()
@@ -274,4 +494,43 @@ it('keeps the reading position when older messages are prepended', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Load older messages' }))
   await screen.findByText('Older message')
   expect(history.scrollTop).toBe(200)
+})
+
+it('keeps the uploaded PDF and draft when validation is busy, then retries', async () => {
+  pdf.uploadPdf
+    .mockImplementationOnce(async (...args) => {
+      args[5]('uploaded')
+      throw new forumApi.ForumApiError(
+        429,
+        'PDF checking is busy. Try Send again shortly.',
+      )
+    })
+    .mockResolvedValueOnce('uploaded')
+  api.postMessage.mockResolvedValueOnce({ ...own, message_id: 'retry-pdf' })
+  renderForum()
+  await waitFor(() => expect(messageBox().disabled).toBe(false))
+  change('Your message', 'Keep my draft')
+  attachPdf(new File(['pdf'], 'lecture.pdf', { type: 'application/pdf' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  expect(await screen.findByRole('alert')).toHaveProperty(
+    'textContent',
+    'PDF checking is busy. Try Send again shortly.',
+  )
+  expect(messageBox().value).toBe('Keep my draft')
+  expect(screen.getByRole('button', { name: 'Remove PDF' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+  await waitFor(() => expect(api.postMessage).toHaveBeenCalledOnce())
+  expect(pdf.uploadPdf.mock.calls[1][6]).toBe('uploaded')
+})
+
+it('can continue a bounded empty history page using its cursor', async () => {
+  api.getMessages.mockResolvedValueOnce({ items: [], next_cursor: 'older' })
+  api.getMessages.mockResolvedValueOnce({ items: [own], next_cursor: null })
+  renderForum()
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Load older messages' }),
+  )
+  await screen.findByText(own.content)
+  expect(api.getMessages).toHaveBeenCalledTimes(2)
+  expect(api.getMessages.mock.calls[1][2]).toBe('older')
 })

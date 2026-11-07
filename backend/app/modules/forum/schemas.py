@@ -37,13 +37,19 @@ def _validate_room_id(value: str) -> str:
 RoomId = Annotated[str, AfterValidator(_validate_room_id)]
 
 
+class AttachmentOut(BaseModel):
+    filename: str
+    size: int
+
+
 class MessageIn(BaseModel):
-    content: str = Field(min_length=1, max_length=500)
+    content: str = Field(default="", max_length=500)
+    attachment_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
 
     def model_post_init(self, __context: object, /) -> None:
         stripped = self.content.strip()
-        if not stripped:
-            raise ValueError("content must not be blank")
+        if not stripped and not self.attachment_id:
+            raise ValueError("A message or PDF is required")
         object.__setattr__(self, "content", stripped)
 
 
@@ -57,6 +63,7 @@ class MessageOut(BaseModel):
     content: str
     posted_at: str
     expires_at: str
+    attachment: AttachmentOut | None = None
 
 
 class MessagePage(BaseModel):
