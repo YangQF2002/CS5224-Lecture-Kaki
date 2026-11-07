@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
+import Icon from '../../Icon.tsx'
 import {
   SignInRequired,
   confirmSignedIn,
@@ -11,7 +12,12 @@ import {
 } from '../forum/auth.ts'
 import { fetchLectureSnapshot } from '../discovery/lectureApi.ts'
 import type { LectureSnapshot } from '../discovery/types.ts'
-import { getProfile, saveProfile } from './profileApi.ts'
+import {
+  USERNAME_PATTERN,
+  getProfile,
+  saveTopics,
+  saveUsername,
+} from './profileApi.ts'
 import './profile.css'
 
 const PROFILE_PATH = '/profile'
@@ -27,6 +33,16 @@ function availableTopics(snapshot: LectureSnapshot): string[] {
   return [...new Set(snapshot.modules.flatMap((module) => module.topics ?? []))]
 }
 
+function ProfileHeading() {
+  return (
+    <header className="page-heading">
+      <p className="eyebrow">Your space</p>
+      <h1>Profile</h1>
+      <p>A little about you. A world of things to discover.</p>
+    </header>
+  )
+}
+
 function ProfilePage() {
   const [account, setAccount] = useState<Account>({ status: 'loading' })
   const [topics, setTopics] = useState<string[] | null>(null)
@@ -34,6 +50,10 @@ function ProfilePage() {
   const [loadError, setLoadError] = useState('')
   const [saveState, setSaveState] = useState<SaveState>('idle')
   const [saveError, setSaveError] = useState('')
+  const [username, setUsername] = useState('')
+  const [usernameInput, setUsernameInput] = useState('')
+  const [usernameState, setUsernameState] = useState<SaveState>('idle')
+  const [usernameError, setUsernameError] = useState('')
   // Saves run one at a time, always sending the latest selection.
   const pendingSave = useRef<string[] | null>(null)
   const saving = useRef(false)
@@ -58,6 +78,8 @@ function ProfilePage() {
         if (cancelled) return
         confirmSignedIn()
         setSelected(profile.topics)
+        setUsername(profile.username)
+        setUsernameInput(profile.username)
         setAccount({ status: 'signedIn' })
       })
       .catch(async (error: unknown) => {
@@ -97,7 +119,7 @@ function ProfilePage() {
       while (pendingSave.current) {
         const next = pendingSave.current
         pendingSave.current = null
-        await saveProfile({ topics: next }, getAccessToken)
+        await saveTopics(next, getAccessToken)
       }
       setSaveState('saved')
       setSaveError('')
@@ -113,6 +135,36 @@ function ProfilePage() {
     }
   }
 
+  async function submitUsername(event: FormEvent) {
+    event.preventDefault()
+    const next = usernameInput.trim()
+    if (next === username) return
+    if (!USERNAME_PATTERN.test(next)) {
+      setUsernameState('error')
+      setUsernameError(
+        'Use 3–20 letters, numbers, underscores or hyphens, without spaces.',
+      )
+      return
+    }
+    setUsernameState('saving')
+    try {
+      const profile = await saveUsername(next, getAccessToken)
+      setUsername(profile.username)
+      setUsernameInput(profile.username)
+      setUsernameState('saved')
+      setUsernameError('')
+    } catch (error) {
+      if (error instanceof SignInRequired) {
+        setAccount({ status: 'signedOut' })
+        return
+      }
+      setUsernameState('error')
+      setUsernameError(
+        error instanceof Error ? error.message : 'Unable to save username',
+      )
+    }
+  }
+
   function toggleTopic(topic: string) {
     const next = selected.includes(topic)
       ? selected.filter((item) => item !== topic)
@@ -125,7 +177,7 @@ function ProfilePage() {
   if (account.status === 'loading') {
     return (
       <main className="profile-page">
-        <h1>Profile</h1>
+        <ProfileHeading />
         <p aria-live="polite">Loading…</p>
       </main>
     )
@@ -134,8 +186,11 @@ function ProfilePage() {
   if (account.status === 'signedOut') {
     return (
       <main className="profile-page">
-        <h1>Profile</h1>
+        <ProfileHeading />
         <section className="panel profile-signin">
+          <span className="profile-avatar" aria-hidden="true">
+            <Icon name="user" />
+          </span>
           <h2>Log in or sign up</h2>
           <p>
             Choose the topics you are interested in, then use “Only my topics”
@@ -162,7 +217,46 @@ function ProfilePage() {
 
   return (
     <main className="profile-page">
-      <h1>Profile</h1>
+      <ProfileHeading />
+      <section className="panel" aria-labelledby="profile-username">
+        <h2 id="profile-username">Username</h2>
+        <p>
+          Other students see this name on your Forum messages. Your email is
+          never shown.
+        </p>
+        <form className="username-form" onSubmit={submitUsername}>
+          <label>
+            Username
+            <input
+              value={usernameInput}
+              maxLength={20}
+              autoComplete="off"
+              onChange={(event) => {
+                setUsernameInput(event.target.value)
+                setUsernameState('idle')
+              }}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={
+              usernameState === 'saving' || usernameInput.trim() === username
+            }
+          >
+            {usernameState === 'saving' ? 'Saving…' : 'Save'}
+          </button>
+        </form>
+        <p
+          className={`profile-save ${usernameState === 'error' ? 'is-error' : ''}`}
+          aria-live="polite"
+        >
+          {usernameState === 'saved'
+            ? 'Saved. New messages will show this name.'
+            : usernameState === 'error'
+              ? usernameError
+              : ''}
+        </p>
+      </section>
       <section className="panel" aria-labelledby="profile-topics">
         <div className="profile-heading">
           <h2 id="profile-topics">Interested topics</h2>

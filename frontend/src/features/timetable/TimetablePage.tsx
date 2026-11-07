@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Link } from 'react-router'
+import Icon from '../../Icon.tsx'
 import { SignInRequired, getAccessToken } from '../forum/auth.ts'
 import SelectField, { EMPTY_SELECT_VALUE } from '../../SelectField.tsx'
 import { fetchModule, fetchModuleList, isAcademicYear } from './nusmodsApi.ts'
@@ -606,9 +608,19 @@ function TimetablePage() {
 
   return (
     <main className="timetable-page">
-      <header>
-        <h1>My Timetable</h1>
-        <p>Create a timetable or import a NUSMods share link.</p>
+      <header className="page-heading timetable-heading">
+        <div>
+          <p className="eyebrow">Make space for something new</p>
+          <h1>My Timetable</h1>
+          <p>
+            Your week, with room to explore. Create a timetable or import from
+            NUSMods.
+          </p>
+        </div>
+        <Link to="/" className="button-link secondary">
+          <Icon name="plus" />
+          Find a lecture
+        </Link>
       </header>
 
       <section className="panel term-controls">
@@ -643,153 +655,10 @@ function TimetablePage() {
         </label>
       </section>
 
-      <section className="panel">
-        <h2>Import from NUSMods</h2>
-        <div className="inline-form">
-          <input
-            value={shareLink}
-            placeholder="Paste a NUSMods timetable share link"
-            onChange={(event) => setShareLink(event.target.value)}
-          />
-          <button
-            disabled={loading || !shareLink.trim()}
-            onClick={() => void importShareLink()}
-          >
-            Import
-          </button>
-        </div>
-      </section>
-
-      <section className="panel">
-        <h2>Add a module</h2>
-        <input
-          value={moduleQuery}
-          placeholder="Search by module code or title"
-          onChange={(event) => {
-            resetPicker()
-            setModuleQuery(event.target.value)
-          }}
-        />
-
-        {searchResults.length > 0 && !selectedModule && (
-          <ul className="search-results">
-            {searchResults.map((module) => (
-              <li key={module.moduleCode}>
-                <button
-                  type="button"
-                  onClick={() => void chooseModule(module.moduleCode)}
-                >
-                  <strong>{module.moduleCode}</strong> {module.title}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {selectedModule && (
-          <div className="group-picker">
-            <h3>
-              {selectedModule.moduleCode}: {selectedModule.title}
-            </h3>
-
-            {Object.entries(lessonGroups).map(([lessonType, classNumbers]) => (
-              <label key={lessonType}>
-                {lessonType}
-                <SelectField
-                  value={groupChoices[lessonType] || EMPTY_SELECT_VALUE}
-                  options={[
-                    { value: EMPTY_SELECT_VALUE, label: 'Do not add' },
-                    ...classNumbers.map((classNo) => ({
-                      value: classNo,
-                      label: classNo,
-                    })),
-                  ]}
-                  aria-label={lessonType}
-                  onValueChange={(value) =>
-                    setGroupChoices((current) => ({
-                      ...current,
-                      [lessonType]: value === EMPTY_SELECT_VALUE ? '' : value,
-                    }))
-                  }
-                />
-              </label>
-            ))}
-
-            <button disabled={loading} onClick={addSelectedGroups}>
-              Add selected groups
-            </button>
-          </div>
-        )}
-      </section>
-
       {message && <p className="status-message">{message}</p>}
       {moduleLoadError && <p className="status-message">{moduleLoadError}</p>}
 
-      <section className="panel">
-        <div className="section-heading">
-          <div>
-            <h2>Selected modules</h2>
-          </div>
-          {timetable.selections.length > 0 && (
-            <span className="module-count">
-              {
-                new Set(
-                  timetable.selections.map((selection) => selection.moduleCode),
-                ).size
-              }
-            </span>
-          )}
-          {timetable.selections.length === 0 ? (
-            <p>No modules added yet.</p>
-          ) : (
-            <div className="module-strip">
-              {selectedModuleCodes.map((moduleCode) => {
-                const moduleSelections = timetable.selections.filter(
-                  (selection) => selection.moduleCode === moduleCode,
-                )
-                const moduleTitle = moduleSelections[0]?.moduleTitle ?? ''
-
-                return (
-                  <article
-                    className={`selected-module module-card ${moduleColor(moduleCode, selectedModuleCodes)}`}
-                    key={moduleCode}
-                  >
-                    <button
-                      className="remove-module"
-                      type="button"
-                      aria-label="Remove"
-                      title={`Remove ${moduleCode}`}
-                      disabled={loading}
-                      onClick={() => removeModule(moduleCode)}
-                    >
-                      <span aria-hidden="true">×</span>
-                    </button>
-                    <strong className="module-code">{moduleCode}</strong>
-                    <span className="module-title">{moduleTitle}</span>
-                    {moduleSelections.some(
-                      (selection) => selection.source === 'discover',
-                    ) && <span className="module-origin">From Discover</span>}
-                    <ul>
-                      {moduleSelections.map((selection) => (
-                        <li
-                          key={`${selection.lessonType}-${selection.week ?? ''}-${selection.day ?? ''}`}
-                        >
-                          {selection.lessonType}: {selection.classNo}
-                          {selection.week !== undefined &&
-                            ` · Week ${selection.week}`}
-                          {selection.day && ` · ${selection.day}`}
-                        </li>
-                      ))}
-                    </ul>
-                  </article>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="panel">
+      <section className="panel timetable-schedule">
         <div className="section-heading schedule-heading">
           <div>
             <h2>Weekly schedule</h2>
@@ -907,6 +776,155 @@ function TimetablePage() {
           </div>
         </div>
       </section>
+      <section className="panel">
+        <div className="section-heading">
+          <div>
+            <h2>Selected modules</h2>
+          </div>
+          {timetable.selections.length > 0 && (
+            <span className="module-count">
+              {
+                new Set(
+                  timetable.selections.map((selection) => selection.moduleCode),
+                ).size
+              }
+            </span>
+          )}
+          {timetable.selections.length === 0 ? (
+            <p>No modules added yet.</p>
+          ) : (
+            <div className="module-strip">
+              {selectedModuleCodes.map((moduleCode) => {
+                const moduleSelections = timetable.selections.filter(
+                  (selection) => selection.moduleCode === moduleCode,
+                )
+                const moduleTitle = moduleSelections[0]?.moduleTitle ?? ''
+
+                return (
+                  <article
+                    className={`selected-module module-card ${moduleColor(moduleCode, selectedModuleCodes)}`}
+                    key={moduleCode}
+                  >
+                    <button
+                      className="remove-module"
+                      type="button"
+                      aria-label="Remove"
+                      title={`Remove ${moduleCode}`}
+                      disabled={loading}
+                      onClick={() => removeModule(moduleCode)}
+                    >
+                      <span aria-hidden="true">×</span>
+                    </button>
+                    <strong className="module-code">{moduleCode}</strong>
+                    <span className="module-title">{moduleTitle}</span>
+                    {moduleSelections.some(
+                      (selection) => selection.source === 'discover',
+                    ) && <span className="module-origin">From Discover</span>}
+                    <ul>
+                      {moduleSelections.map((selection) => (
+                        <li
+                          key={`${selection.lessonType}-${selection.week ?? ''}-${selection.day ?? ''}`}
+                        >
+                          {selection.lessonType}: {selection.classNo}
+                          {selection.week !== undefined &&
+                            ` · Week ${selection.week}`}
+                          {selection.day && ` · ${selection.day}`}
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <div className="timetable-setup">
+        <section className="panel">
+          <h2>Import from NUSMods</h2>
+          <div className="inline-form">
+            <input
+              value={shareLink}
+              placeholder="Paste a NUSMods timetable share link"
+              aria-label="NUSMods timetable share link"
+              onChange={(event) => setShareLink(event.target.value)}
+            />
+            <button
+              disabled={loading || !shareLink.trim()}
+              onClick={() => void importShareLink()}
+            >
+              Import
+            </button>
+          </div>
+        </section>
+
+        <section className="panel">
+          <h2>Add a module</h2>
+          <input
+            value={moduleQuery}
+            placeholder="Search by module code or title"
+            aria-label="Search by module code or title"
+            onChange={(event) => {
+              resetPicker()
+              setModuleQuery(event.target.value)
+            }}
+          />
+
+          {searchResults.length > 0 && !selectedModule && (
+            <ul className="search-results">
+              {searchResults.map((module) => (
+                <li key={module.moduleCode}>
+                  <button
+                    type="button"
+                    onClick={() => void chooseModule(module.moduleCode)}
+                  >
+                    <strong>{module.moduleCode}</strong> {module.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {selectedModule && (
+            <div className="group-picker">
+              <h3>
+                {selectedModule.moduleCode}: {selectedModule.title}
+              </h3>
+
+              {Object.entries(lessonGroups).map(
+                ([lessonType, classNumbers]) => (
+                  <label key={lessonType}>
+                    {lessonType}
+                    <SelectField
+                      value={groupChoices[lessonType] || EMPTY_SELECT_VALUE}
+                      options={[
+                        { value: EMPTY_SELECT_VALUE, label: 'Do not add' },
+                        ...classNumbers.map((classNo) => ({
+                          value: classNo,
+                          label: classNo,
+                        })),
+                      ]}
+                      aria-label={lessonType}
+                      onValueChange={(value) =>
+                        setGroupChoices((current) => ({
+                          ...current,
+                          [lessonType]:
+                            value === EMPTY_SELECT_VALUE ? '' : value,
+                        }))
+                      }
+                    />
+                  </label>
+                ),
+              )}
+
+              <button disabled={loading} onClick={addSelectedGroups}>
+                Add selected groups
+              </button>
+            </div>
+          )}
+        </section>
+      </div>
     </main>
   )
 }

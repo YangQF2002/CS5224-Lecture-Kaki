@@ -32,11 +32,11 @@ if (-not (Test-Path frontend/.env.local)) { Copy-Item frontend/.env.example fron
 
 Fill in the [backend](../backend/.env.example) and [frontend](../frontend/.env.example) settings. Map `UserPoolId`, `ClientId` and `HostedDomain` to `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID` and `COGNITO_DOMAIN`; use the same client/domain in the frontend.
 
-| Feature   | Backend setting / table schema                                                                  | Required table permissions                                                       |
-| --------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Forum     | `DYNAMODB_TABLE`; String `PK` + `SK`; TTL on `ttl`. Example: `lecturekaki-dev-forum`.           | `dynamodb:GetItem`, `dynamodb:PutItem`, `dynamodb:Query`, `dynamodb:DeleteItem`. |
-| Timetable | `TIMETABLE_TABLE_NAME`; String partition key `user_id`; no TTL. Use the timetable stack output. | `dynamodb:GetItem`, `dynamodb:PutItem`, `dynamodb:DeleteItem`.                   |
-| Profile   | `PROFILE_TABLE_NAME`; String partition key `user_id`; no TTL. Created by `infra/terraform/`.    | `dynamodb:GetItem`, `dynamodb:PutItem`.                                          |
+| Feature   | Backend setting / table schema                                                                  | Required table permissions                                                            |
+| --------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Forum     | `DYNAMODB_TABLE`; String `PK` + `SK`; TTL on `ttl`. Example: `lecturekaki-dev-forum`.           | `dynamodb:GetItem`, `dynamodb:PutItem`, `dynamodb:Query`, `dynamodb:DeleteItem`.      |
+| Timetable | `TIMETABLE_TABLE_NAME`; String partition key `user_id`; no TTL. Use the timetable stack output. | `dynamodb:GetItem`, `dynamodb:PutItem`, `dynamodb:DeleteItem`.                        |
+| Profile   | `PROFILE_TABLE_NAME`; String partition key `user_id`; no TTL. Created by `infra/terraform/`.    | `dynamodb:GetItem`, `dynamodb:PutItem`, `dynamodb:UpdateItem`, `dynamodb:DeleteItem`. |
 
 The Cognito public client needs code flow, scope `openid` and these callback/logout URLs. Retain existing clients' URLs when updating the lists.
 
