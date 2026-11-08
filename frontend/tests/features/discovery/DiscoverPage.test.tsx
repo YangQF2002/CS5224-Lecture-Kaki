@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -233,10 +234,39 @@ it('filters by building with counts for the selected week', async () => {
   await screen.findByText('2 lectures in Week 11')
 
   fireEvent.click(screen.getByText('Filters'))
-  const buildings = screen.getByText('Buildings').closest('details')!
+  const buildings = screen
+    .getByText('Buildings')
+    .closest<HTMLElement>('.multi-select-field')!
   fireEvent.click(within(buildings).getByLabelText(/COM1/))
 
   expect(screen.getByText('1 lecture in Week 11')).toBeTruthy()
+  expect(screen.getByTestId('location').textContent).toBe('?buildings=COM1')
+})
+
+it('ticks the first search match on Enter, then closes on Enter', async () => {
+  renderPage()
+  await screen.findByText('2 lectures in Week 11')
+
+  fireEvent.click(screen.getByText('Filters'))
+  const buildings = screen
+    .getByText('Buildings')
+    .closest<HTMLElement>('.multi-select-field')!
+  const details = buildings.querySelector('details')!
+  fireEvent.click(details.querySelector('summary')!)
+  // <details> fires its toggle event asynchronously.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+  expect(details.open).toBe(true)
+
+  const search = within(buildings).getByLabelText('Search buildings')
+  fireEvent.change(search, { target: { value: 'com' } })
+  fireEvent.keyDown(search, { key: 'Enter' })
+
+  expect(screen.getByTestId('location').textContent).toBe('?buildings=COM1')
+  expect((search as HTMLInputElement).value).toBe('com')
+  expect(details.open).toBe(true)
+
+  fireEvent.keyDown(search, { key: 'Enter' })
+  expect(details.open).toBe(false)
   expect(screen.getByTestId('location').textContent).toBe('?buildings=COM1')
 })
 
