@@ -6,8 +6,8 @@ import Icon from '../../Icon.tsx'
 import DiscoveryHeader from './DiscoveryHeader.tsx'
 import DiscoveryRail from './DiscoveryRail.tsx'
 import { parseRoomId, roomIdFor, roomPath } from '../forum/roomCatalogue.ts'
-import { getAccessToken } from '../forum/auth.ts'
-import { getProfile } from '../profile/profileApi.ts'
+import { SignInRequired, getAccessToken } from '../forum/auth.ts'
+import { getProfile, loadLocalTopics } from '../profile/profileApi.ts'
 import { fetchModule } from '../timetable/nusmodsApi.ts'
 import { saveRemoteTimetable } from '../timetable/timetableApi.ts'
 import { loadTimetable, saveTimetable } from '../timetable/timetableStorage.ts'
@@ -97,7 +97,8 @@ function DiscoverPage() {
   const [today] = useState(() => singaporeNow().date)
   const [shown, setShown] = useState({ key: '', count: PAGE_SIZE })
   const [timetable, setTimetable] = useState(loadTimetable)
-  // The signed-in user's interest topics; null when signed out or unavailable.
+  // The user's interest topics: the account's when signed in, otherwise the
+  // ones picked in this browser. null while loading or if unavailable.
   const [interests, setInterests] = useState<string[] | null>(null)
 
   useEffect(() => {
@@ -106,7 +107,11 @@ function DiscoverPage() {
       .then((profile) => {
         if (!cancelled) setInterests(profile.topics)
       })
-      .catch(() => undefined)
+      .catch((cause: unknown) => {
+        if (!cancelled && cause instanceof SignInRequired) {
+          setInterests(loadLocalTopics())
+        }
+      })
     return () => {
       cancelled = true
     }

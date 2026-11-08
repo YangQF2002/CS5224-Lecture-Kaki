@@ -20,6 +20,44 @@ export function subscribeToProfileUpdates(
   }
 }
 
+// Topics picked while signed out live in this browser only.
+const LOCAL_TOPICS_KEY = 'lecturekaki:topics:v1'
+const topicListeners = new Set<(topics: string[]) => void>()
+
+/** Called with the new list whenever topics are saved, here or to the account. */
+export function subscribeToTopicUpdates(listener: (topics: string[]) => void) {
+  topicListeners.add(listener)
+  return () => {
+    topicListeners.delete(listener)
+  }
+}
+
+function notifyTopics(topics: string[]) {
+  for (const listener of topicListeners) listener(topics)
+}
+
+export function loadLocalTopics(): string[] {
+  try {
+    const stored: unknown = JSON.parse(
+      localStorage.getItem(LOCAL_TOPICS_KEY) ?? '[]',
+    )
+    return Array.isArray(stored)
+      ? stored.filter((topic): topic is string => typeof topic === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
+export function saveLocalTopics(topics: string[]) {
+  try {
+    localStorage.setItem(LOCAL_TOPICS_KEY, JSON.stringify(topics))
+  } catch {
+    // Storage can be unavailable (e.g. private mode); keep them for this visit.
+  }
+  notifyTopics(topics)
+}
+
 // Mirrors the API's rule; the server is the authority.
 export const USERNAME_PATTERN = /^[A-Za-z0-9_-]{3,20}$/
 
@@ -62,14 +100,16 @@ export function getProfile(getToken: () => Promise<string>): Promise<Profile> {
   return request('', getToken)
 }
 
-export function saveTopics(
+export async function saveTopics(
   topics: string[],
   getToken: () => Promise<string>,
 ): Promise<Profile> {
-  return request('/topics', getToken, {
+  const profile = await request('/topics', getToken, {
     method: 'PUT',
     body: JSON.stringify({ topics }),
   })
+  notifyTopics(profile.topics)
+  return profile
 }
 
 export async function saveUsername(
