@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router'
 import Icon, { type IconName } from './Icon.tsx'
 import AccountMenu from './features/profile/AccountMenu.tsx'
+import SidebarTopics from './features/profile/SidebarTopics.tsx'
 
 const navigation: { to: string; label: string; icon: IconName }[] = [
   { to: '/', label: 'Discover', icon: 'compass' },
@@ -65,22 +66,7 @@ function App() {
         </nav>
         <div className="sidebar-explore">
           <p className="eyebrow">Follow your curiosity</p>
-          <Link to="/?topics=AI+%26+Machine+Learning">
-            <span className="subject-dot sage" />
-            AI & machine learning
-          </Link>
-          <Link to="/?topics=Psychology">
-            <span className="subject-dot clay" />
-            Psychology
-          </Link>
-          <Link to="/?topics=Arts+%26+Media">
-            <span className="subject-dot lavender" />
-            Arts & media
-          </Link>
-          <Link className="sidebar-interests" to="/profile">
-            <Icon name="plus" />
-            Choose your interests
-          </Link>
+          <SidebarTopics />
         </div>
         <div className="sidebar-bottom">
           <AccountMenu key={pathname} />

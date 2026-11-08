@@ -21,6 +21,10 @@ const paths = {
     'm10.3 3.9-8.2 14a2 2 0 0 0 1.7 3h16.4a2 2 0 0 0 1.7-3l-8.2-14a2 2 0 0 0-3.4 0ZM12 9v4m0 4h.01',
   menu: 'M3 6h18M3 12h18M3 18h18',
   book: 'M12 7v14M3 3h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5v16h-5a4 4 0 0 0-4 2 4 4 0 0 0-4-2H3V3Z',
+  up: 'm6 15 6-6 6 6',
+  down: 'm6 9 6 6 6-6',
+  close: 'M18 6 6 18M6 6l12 12',
+  grip: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01',
 } as const
 
 export type IconName = keyof typeof paths

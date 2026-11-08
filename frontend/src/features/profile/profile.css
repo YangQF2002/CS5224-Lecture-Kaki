@@ -126,3 +126,72 @@ button.topic-button[aria-pressed='true'] {
     padding: 1.5rem;
   }
 }
+
+.topic-order {
+  margin-top: 1.5rem;
+}
+.topic-order h3 {
+  margin: 0 0 0.25rem;
+  font-size: var(--text-label);
+}
+.topic-order .profile-hint {
+  margin: 0 0 0.75rem;
+}
+.topic-order ol {
+  display: grid;
+  gap: 0.4rem;
+  max-width: 34rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.topic-order li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.4rem 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  background: white;
+  cursor: grab;
+}
+.topic-order li.is-featured {
+  border-color: var(--accent-soft);
+  background: color-mix(in srgb, var(--accent-soft) 35%, white);
+}
+.topic-order li.is-dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+.topic-grip {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.topic-rank {
+  min-width: 1.4rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.topic-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.topic-order button.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  min-height: 0;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+.topic-order button.icon-button:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--soft);
+}
+.topic-order button.icon-button:disabled {
+  opacity: 0.3;
+}

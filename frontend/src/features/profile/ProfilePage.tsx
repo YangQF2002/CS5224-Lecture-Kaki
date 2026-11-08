@@ -15,6 +15,8 @@ import type { LectureSnapshot } from '../discovery/types.ts'
 import {
   USERNAME_PATTERN,
   getProfile,
+  loadLocalTopics,
+  saveLocalTopics,
   saveTopics,
   saveUsername,
 } from './profileApi.ts'
@@ -43,6 +45,103 @@ function ProfileHeading() {
   )
 }
 
+const SIDEBAR_TOPICS = 5
+
+function TopicOrder({
+  topics,
+  onMove,
+  onRemove,
+}: {
+  topics: string[]
+  onMove: (from: number, to: number) => void
+  onRemove: (topic: string) => void
+}) {
+  const list = useRef<HTMLOListElement>(null)
+  const [dragged, setDragged] = useState<number | null>(null)
+
+  // Moving a topic to the top or bottom disables the button just pressed;
+  // keep focus on that topic's other arrow so the keyboard isn't lost.
+  function move(index: number, to: number, direction: 'up' | 'down') {
+    onMove(index, to)
+    requestAnimationFrame(() => {
+      const row = list.current?.children[to]
+      const same = row?.querySelector<HTMLButtonElement>(`.move-${direction}`)
+      const other = row?.querySelector<HTMLButtonElement>(
+        `.move-${direction === 'up' ? 'down' : 'up'}`,
+      )
+      ;(same && !same.disabled ? same : other)?.focus()
+    })
+  }
+
+  return (
+    <div className="topic-order">
+      <h3 id="topic-order-heading">Your topics</h3>
+      <p className="profile-hint">
+        Drag or use the arrows to reorder. The first {SIDEBAR_TOPICS} appear in
+        the sidebar.
+      </p>
+      <ol ref={list} aria-labelledby="topic-order-heading">
+        {topics.map((topic, index) => (
+          <li
+            key={topic}
+            draggable
+            className={[
+              index < SIDEBAR_TOPICS ? 'is-featured' : '',
+              dragged === index ? 'is-dragging' : '',
+            ].join(' ')}
+            onDragStart={(event) => {
+              setDragged(index)
+              event.dataTransfer.effectAllowed = 'move'
+              // Firefox only starts a drag when some data is set.
+              event.dataTransfer.setData('text/plain', topic)
+            }}
+            onDragOver={(event) => {
+              if (dragged === null) return
+              event.preventDefault()
+              if (dragged !== index) {
+                onMove(dragged, index)
+                setDragged(index)
+              }
+            }}
+            onDrop={(event) => event.preventDefault()}
+            onDragEnd={() => setDragged(null)}
+          >
+            <Icon name="grip" className="topic-grip" />
+            <span className="topic-rank">{index + 1}</span>
+            <span className="topic-name">{topic}</span>
+            <button
+              type="button"
+              className="icon-button move-up"
+              aria-label={`Move ${topic} up`}
+              disabled={index === 0}
+              onClick={() => move(index, index - 1, 'up')}
+            >
+              <Icon name="up" />
+            </button>
+            <button
+              type="button"
+              className="icon-button move-down"
+              aria-label={`Move ${topic} down`}
+              disabled={index === topics.length - 1}
+              onClick={() => move(index, index + 1, 'down')}
+            >
+              <Icon name="down" />
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={`Remove ${topic}`}
+              onClick={() => onRemove(topic)}
+            >
+              <Icon name="close" />
+            </button>
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
 function ProfilePage() {
   const [account, setAccount] = useState<Account>({ status: 'loading' })
   const [topics, setTopics] = useState<string[] | null>(null)
@@ -58,6 +157,13 @@ function ProfilePage() {
   const pendingSave = useRef<string[] | null>(null)
   const saving = useRef(false)
 
+  // Signed out, topics are picked and saved in this browser.
+  function showSignedOut() {
+    setSelected(loadLocalTopics())
+    setSaveState('idle')
+    setAccount({ status: 'signedOut' })
+  }
+
   useEffect(() => {
     fetchLectureSnapshot()
       .then((snapshot) => setTopics(availableTopics(snapshot)))
@@ -70,14 +176,26 @@ function ProfilePage() {
     const stopSignOut = subscribeToSignOut(() => {
       cancelled = true
       signInController.abort()
-      setAccount({ status: 'signedOut' })
+      showSignedOut()
     })
 
     getProfile(getAccessToken)
       .then((profile) => {
         if (cancelled) return
         confirmSignedIn()
-        setSelected(profile.topics)
+        // First sign-in after picking topics signed out: keep those picks.
+        const local = loadLocalTopics()
+        if (profile.topics.length === 0 && local.length > 0) {
+          setSelected(local)
+          saveTopics(local, getAccessToken)
+            .then(() => setSaveState('saved'))
+            .catch(() => {
+              setSaveState('error')
+              setSaveError('could not copy your topics to your account')
+            })
+        } else {
+          setSelected(profile.topics)
+        }
         setUsername(profile.username)
         setUsernameInput(profile.username)
         setAccount({ status: 'signedIn' })
@@ -98,9 +216,9 @@ function ProfilePage() {
             PROFILE_PATH,
             signInController.signal,
           )
-          if (!cancelled && !started) setAccount({ status: 'signedOut' })
+          if (!cancelled && !started) showSignedOut()
         } catch {
-          if (!cancelled) setAccount({ status: 'signedOut' })
+          if (!cancelled) showSignedOut()
         }
       })
 
@@ -125,7 +243,7 @@ function ProfilePage() {
       setSaveError('')
     } catch (error) {
       if (error instanceof SignInRequired) {
-        setAccount({ status: 'signedOut' })
+        showSignedOut()
         return
       }
       setSaveState('error')
@@ -165,13 +283,32 @@ function ProfilePage() {
     }
   }
 
-  function toggleTopic(topic: string) {
-    const next = selected.includes(topic)
-      ? selected.filter((item) => item !== topic)
-      : [...selected, topic]
+  function saveSelection(next: string[]) {
     setSelected(next)
+    if (account.status === 'signedOut') {
+      saveLocalTopics(next)
+      setSaveState('saved')
+      return
+    }
     pendingSave.current = next
     void flushSaves()
+  }
+
+  // New picks go to the end; the order is kept and shown in the sidebar.
+  function toggleTopic(topic: string) {
+    saveSelection(
+      selected.includes(topic)
+        ? selected.filter((item) => item !== topic)
+        : [...selected, topic],
+    )
+  }
+
+  function moveTopic(from: number, to: number) {
+    if (to < 0 || to >= selected.length || from === to) return
+    const next = [...selected]
+    const [topic] = next.splice(from, 1)
+    next.splice(to, 0, topic)
+    saveSelection(next)
   }
 
   if (account.status === 'loading') {
@@ -183,6 +320,76 @@ function ProfilePage() {
     )
   }
 
+  const saveText = {
+    idle: '',
+    saving: 'Saving…',
+    saved: 'Saved',
+    error: `Not saved (${saveError})`,
+  }[saveState]
+
+  const topicsPanel = (
+    <section className="panel" aria-labelledby="profile-topics">
+      <div className="profile-heading">
+        <h2 id="profile-topics">Interested topics</h2>
+        <span
+          className={`profile-save ${saveState === 'error' ? 'is-error' : ''}`}
+          aria-live="polite"
+        >
+          {saveText}
+        </span>
+      </div>
+      {loadError && (
+        <p className="status-message">
+          Your saved topics could not be loaded ({loadError}).
+        </p>
+      )}
+      {topics === null ? (
+        <p aria-live="polite">Loading topics…</p>
+      ) : topics.length === 0 ? (
+        <p>Topics will appear after the next lecture data update.</p>
+      ) : (
+        <>
+          <p>Select every topic you would like to see lectures about.</p>
+          <div
+            className="topic-buttons"
+            role="group"
+            aria-label="Interested topics"
+          >
+            {topics.map((topic) => (
+              <button
+                key={topic}
+                type="button"
+                className="topic-button"
+                aria-pressed={selected.includes(topic)}
+                onClick={() => toggleTopic(topic)}
+              >
+                {topic}
+              </button>
+            ))}
+          </div>
+          {selected.length > 0 && (
+            <TopicOrder
+              topics={selected}
+              onMove={moveTopic}
+              onRemove={toggleTopic}
+            />
+          )}
+          <p className="profile-summary">
+            {selected.length === 1
+              ? '1 topic selected'
+              : `${selected.length} topics selected`}
+            {selected.length > 0 && (
+              <>
+                {' · '}
+                <Link to="/?mine=1">Find lectures on my topics</Link>
+              </>
+            )}
+          </p>
+        </>
+      )}
+    </section>
+  )
+
   if (account.status === 'signedOut') {
     return (
       <main className="profile-page">
@@ -193,8 +400,8 @@ function ProfilePage() {
           </span>
           <h2>Log in or sign up</h2>
           <p>
-            Choose the topics you are interested in, then use “Only my topics”
-            on Discover to find lectures about them.
+            Your topics below are saved in this browser. Log in to keep them on
+            every device and to post in the Forum.
           </p>
           <button type="button" onClick={() => void startSignIn(PROFILE_PATH)}>
             Log in or sign up
@@ -204,16 +411,10 @@ function ProfilePage() {
             email.
           </p>
         </section>
+        {topicsPanel}
       </main>
     )
   }
-
-  const saveText = {
-    idle: '',
-    saving: 'Saving…',
-    saved: 'Saved',
-    error: `Not saved (${saveError})`,
-  }[saveState]
 
   return (
     <main className="profile-page">
@@ -257,59 +458,7 @@ function ProfilePage() {
               : ''}
         </p>
       </section>
-      <section className="panel" aria-labelledby="profile-topics">
-        <div className="profile-heading">
-          <h2 id="profile-topics">Interested topics</h2>
-          <span
-            className={`profile-save ${saveState === 'error' ? 'is-error' : ''}`}
-            aria-live="polite"
-          >
-            {saveText}
-          </span>
-        </div>
-        {loadError && (
-          <p className="status-message">
-            Your saved topics could not be loaded ({loadError}).
-          </p>
-        )}
-        {topics === null ? (
-          <p aria-live="polite">Loading topics…</p>
-        ) : topics.length === 0 ? (
-          <p>Topics will appear after the next lecture data update.</p>
-        ) : (
-          <>
-            <p>Select every topic you would like to see lectures about.</p>
-            <div
-              className="topic-buttons"
-              role="group"
-              aria-label="Interested topics"
-            >
-              {topics.map((topic) => (
-                <button
-                  key={topic}
-                  type="button"
-                  className="topic-button"
-                  aria-pressed={selected.includes(topic)}
-                  onClick={() => toggleTopic(topic)}
-                >
-                  {topic}
-                </button>
-              ))}
-            </div>
-            <p className="profile-summary">
-              {selected.length === 1
-                ? '1 topic selected'
-                : `${selected.length} topics selected`}
-              {selected.length > 0 && (
-                <>
-                  {' · '}
-                  <Link to="/?mine=1">Find lectures on my topics</Link>
-                </>
-              )}
-            </p>
-          </>
-        )}
-      </section>
+      {topicsPanel}
       <button
         type="button"
         className="secondary"
