@@ -22,7 +22,7 @@ from fastapi.concurrency import run_in_threadpool
 from app.modules.auth import CurrentUser, get_current_user
 from app.modules.profile import username_for
 
-from . import attachment_store, attachments, gateway, realtime, repository
+from . import attachment_store, attachments, delivery, realtime, repository
 from .schemas import ConnectionTicket, MessageIn, MessageOut, MessagePage, RoomId
 from .service import (
     collect_page,
@@ -40,9 +40,9 @@ _Auth = Annotated[CurrentUser, Depends(get_current_user)]
 
 
 async def _publish(room_id: str, event: dict) -> None:
-    # Deployed: API Gateway fan-out from any process. Local: this process's sockets.
+    # Deployed delivery runs in its own invocation; local sockets stay in-process.
     if websocket_url():
-        await run_in_threadpool(gateway.publish, room_id, event)
+        await run_in_threadpool(delivery.enqueue, room_id, event)
     else:
         await realtime.hub.publish(room_id, event)
 
@@ -158,7 +158,7 @@ async def live_messages(websocket: WebSocket, room_id: RoomId, ticket: str = "")
     if session is None:
         await websocket.close(code=1008)
         return
-    await realtime.hub.join(room_id, websocket, int(session["session_expires_at"]))
+    await websocket.accept()
     try:
         async with asyncio.timeout(max(0, int(session["session_expires_at"]) - time())):
             while True:
@@ -168,7 +168,12 @@ async def live_messages(websocket: WebSocket, room_id: RoomId, ticket: str = "")
                 except json.JSONDecodeError, KeyError:
                     await websocket.close(code=1008)
                     break
-                if payload != {"action": "ping"}:
+                if payload == {"action": "ready"}:
+                    await realtime.hub.join(
+                        room_id, websocket, int(session["session_expires_at"])
+                    )
+                    await websocket.send_json({"type": "ready", "room_id": room_id})
+                elif payload != {"action": "ping"}:
                     await websocket.close(code=1008)
                     break
     except TimeoutError:

@@ -6,7 +6,7 @@ Implemented features:
 
 - Lecture discovery with shareable filters for time, place, subject, topic and keywords.
 - Personal timetables with lesson selection, NUSMods import, clash highlighting, browser storage and account saving.
-- Lecture discussions with Cognito login, message history, owner-only deletion and live WebSocket updates.
+- Lecture discussions with Cognito login, PDF attachments, message history, owner-only deletion and live WebSocket updates.
 
 ## Quick start
 

@@ -29,6 +29,9 @@ def test_live_delivery_and_author_only_deletion(client, auth):
         client.websocket_connect(first_path) as first,
         client.websocket_connect(second_path) as second,
     ):
+        for socket in (first, second):
+            socket.send_json({"action": "ready"})
+            assert socket.receive_json() == {"type": "ready", "room_id": ROOM}
         message = client.post(
             MESSAGES, json={"content": "Live question"}, headers=auth()
         ).json()
@@ -90,6 +93,8 @@ def test_pdf_live_history_download_and_delete(client, auth, pdf, monkeypatch):
         f"{pdf.base}/connection-ticket", headers=auth("student-b")
     ).json()["path"]
     with client.websocket_connect(ticket) as socket:
+        socket.send_json({"action": "ready"})
+        assert socket.receive_json() == {"type": "ready", "room_id": pdf.room}
         response = pdf.post(upload_id)
         assert response.status_code == 201, response.text
         message = response.json()

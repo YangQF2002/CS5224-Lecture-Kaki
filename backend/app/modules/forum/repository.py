@@ -1,10 +1,13 @@
 """DynamoDB access for the forum module."""
 
 import os
+from time import time
 from typing import Any
 
 import boto3
 from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.types import TypeSerializer
+from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 
@@ -21,7 +24,14 @@ def get_table(table=None):
         raise ForumStorageUnavailable("Forum table is not configured")
     try:
         return (
-            boto3.session.Session(region_name=region).resource("dynamodb").Table(name)
+            boto3.session.Session(region_name=region)
+            .resource(
+                "dynamodb",
+                config=Config(
+                    connect_timeout=1, read_timeout=2, retries={"total_max_attempts": 2}
+                ),
+            )
+            .Table(name)
         )
     except (BotoCoreError, ClientError) as error:
         raise ForumStorageUnavailable from error
@@ -111,15 +121,6 @@ def put_connection(
         Item={
             **_connection_key(connection_id),
             "room_id": room_id,
-            "ttl": session_expires_at,
-        },
-    )
-    _call(
-        "put_item",
-        table=table,
-        Item={
-            **_room_connection_key(room_id, connection_id),
-            "connection_id": connection_id,
             "user_id": user_id,
             "session_expires_at": session_expires_at,
             "ttl": session_expires_at,
@@ -127,9 +128,68 @@ def put_connection(
     )
 
 
+def activate_connection(connection_id: str, *, table=None) -> dict | None:
+    """Join broadcasts after the handshake, atomically with the session check."""
+    session = _call(
+        "get_item", table=table, Key=_connection_key(connection_id), ConsistentRead=True
+    ).get("Item")
+    if session is None or int(session["session_expires_at"]) <= time():
+        return None
+    encode = TypeSerializer().serialize
+    room_id = session["room_id"]
+    item = {
+        **_room_connection_key(room_id, connection_id),
+        "connection_id": connection_id,
+        "user_id": session["user_id"],
+        "session_expires_at": session["session_expires_at"],
+        "ttl": session["session_expires_at"],
+    }
+    try:
+        client = boto3.client(
+            "dynamodb",
+            region_name=os.environ["AWS_REGION"],
+            config=Config(
+                connect_timeout=1, read_timeout=2, retries={"total_max_attempts": 2}
+            ),
+        )
+        name = get_table(table).name
+        client.transact_write_items(
+            TransactItems=[
+                {
+                    "ConditionCheck": {
+                        "TableName": name,
+                        "Key": {
+                            key: encode(value)
+                            for key, value in _connection_key(connection_id).items()
+                        },
+                        "ConditionExpression": "attribute_exists(PK) AND session_expires_at > :now",
+                        "ExpressionAttributeValues": {":now": encode(int(time()))},
+                    }
+                },
+                {
+                    "Put": {
+                        "TableName": name,
+                        "Item": {key: encode(value) for key, value in item.items()},
+                    }
+                },
+            ]
+        )
+    except ClientError as error:
+        if error.response["Error"]["Code"] == "TransactionCanceledException" and any(
+            reason.get("Code") == "ConditionalCheckFailed"
+            for reason in error.response.get("CancellationReasons", [])
+        ):
+            return None
+        raise ForumStorageUnavailable from error
+    except BotoCoreError as error:
+        raise ForumStorageUnavailable from error
+    return session
+
+
 def delete_room_connection(room_id: str, connection_id: str, *, table=None) -> None:
-    _call("delete_item", table=table, Key=_room_connection_key(room_id, connection_id))
+    # Removing metadata first prevents an in-flight ready from recreating membership.
     _call("delete_item", table=table, Key=_connection_key(connection_id))
+    _call("delete_item", table=table, Key=_room_connection_key(room_id, connection_id))
 
 
 def delete_connection(connection_id: str, *, table=None) -> None:
