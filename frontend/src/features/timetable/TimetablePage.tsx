@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link } from 'react-router'
 import Icon from '../../Icon.tsx'
 import { SignInRequired, getAccessToken } from '../forum/auth.ts'
+// prettier-ignore
+import { chooseDefaultWeek, singaporeNow } from '../discovery/discoveryFilters.ts'
+import { fetchLectureSnapshot } from '../discovery/lectureApi.ts'
 import SelectField, { EMPTY_SELECT_VALUE } from '../../SelectField.tsx'
 import { fetchModule, fetchModuleList, isAcademicYear } from './nusmodsApi.ts'
 import {
@@ -93,6 +96,17 @@ function teachingWeekForIndex(index: number): number | null {
   return null
 }
 
+// Position in WEEK_OPTIONS for a lecture-calendar week such as "week-07".
+function weekIndexFor(week: string): number {
+  const teaching = /^week-(\d+)$/.exec(week)
+  if (teaching) {
+    const number = Number(teaching[1])
+    return number <= 6 ? number - 1 : number
+  }
+  if (week === 'recess') return 6
+  return WEEK_OPTIONS.length - 1 // Reading week, then exams.
+}
+
 function lessonIsInTeachingWeek(weeks: Weeks, teachingWeek: number): boolean {
   if (Array.isArray(weeks)) return weeks.includes(teachingWeek)
   if (weeks.weeks) return weeks.weeks.includes(teachingWeek)
@@ -136,8 +150,33 @@ function TimetablePage() {
   const [moduleLoadError, setModuleLoadError] = useState('')
   const [loading, setLoading] = useState(false)
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0)
+  const weekChosenByUser = useRef(false)
   const requestId = useRef(0)
   const backendHydrated = useRef(false)
+
+  // Open on the current week (next week on Sundays) when the lecture calendar
+  // covers this term. Otherwise, or if it can't load, stay on Week 1.
+  useEffect(() => {
+    let cancelled = false
+    weekChosenByUser.current = false
+    fetchLectureSnapshot().then(
+      ({ pointer, index }) => {
+        if (
+          cancelled ||
+          weekChosenByUser.current ||
+          pointer.acadYear !== timetable.academicYear ||
+          pointer.semester !== timetable.semester
+        )
+          return
+        const week = chooseDefaultWeek(index.weeks, singaporeNow().date)
+        if (week) setSelectedWeekIndex(weekIndexFor(week))
+      },
+      () => {},
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [timetable.academicYear, timetable.semester])
 
   function resetPicker() {
     // An earlier request may finish after a term change or a newer picker action.
@@ -672,9 +711,10 @@ function TimetablePage() {
               type="button"
               aria-label="Previous week"
               disabled={selectedWeekIndex === 0}
-              onClick={() =>
+              onClick={() => {
+                weekChosenByUser.current = true
                 setSelectedWeekIndex((index) => Math.max(0, index - 1))
-              }
+              }}
             >
               <span aria-hidden="true">‹</span>
             </button>
@@ -683,11 +723,12 @@ function TimetablePage() {
               type="button"
               aria-label="Next week"
               disabled={selectedWeekIndex === WEEK_OPTIONS.length - 1}
-              onClick={() =>
+              onClick={() => {
+                weekChosenByUser.current = true
                 setSelectedWeekIndex((index) =>
                   Math.min(WEEK_OPTIONS.length - 1, index + 1),
                 )
-              }
+              }}
             >
               <span aria-hidden="true">›</span>
             </button>

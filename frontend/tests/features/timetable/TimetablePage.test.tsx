@@ -18,6 +18,13 @@ import type {
   NusmodsModule,
   TimetableState,
 } from '../../../src/features/timetable/types.ts'
+import { fetchLectureSnapshot } from '../../../src/features/discovery/lectureApi.ts'
+import type { LectureSnapshot } from '../../../src/features/discovery/types.ts'
+
+vi.mock('../../../src/features/discovery/lectureApi.ts', () => ({
+  fetchLectureSnapshot: vi.fn(),
+  fetchWeekSessions: vi.fn(),
+}))
 
 vi.mock(
   '../../../src/features/timetable/nusmodsApi.ts',
@@ -69,6 +76,9 @@ beforeEach(() => {
     JSON.stringify({ academicYear: '2026-2027', semester: 1, selections: [] }),
   )
   vi.mocked(fetchModule).mockReset().mockResolvedValue(module)
+  vi.mocked(fetchLectureSnapshot)
+    .mockReset()
+    .mockRejectedValue(new Error('Lecture data unavailable'))
   vi.mocked(fetchModuleList)
     .mockReset()
     .mockResolvedValue([
@@ -275,4 +285,73 @@ it('does not clear a saved timetable or fetch incomplete years while editing the
       .mocked(fetchModuleList)
       .mock.calls.every(([year]) => year === '2026-2027'),
   ).toBe(true)
+})
+
+const calendarPointer = {
+  generatedAt: '2026-11-01T00:00:00Z',
+  acadYear: '2026-2027',
+  semester: 1,
+  path: 'lectures/2026-2027/sem-1/test/',
+}
+const calendar: LectureSnapshot = {
+  pointer: calendarPointer,
+  index: {
+    ...calendarPointer,
+    sessionCount: 0,
+    days: [],
+    weeks: [
+      ['week-12', '2026-11-02', '2026-11-08'],
+      ['week-13', '2026-11-09', '2026-11-15'],
+      ['reading', '2026-11-16', '2026-11-22'],
+    ].map(([week, startDate, endDate]) => ({
+      week,
+      startDate,
+      endDate,
+      sessionCount: 0,
+    })),
+  },
+  modules: [],
+}
+
+it.each([
+  ['Saturday', '2026-11-07T12:00:00+08:00', 'Week 12'],
+  ['Sunday', '2026-11-08T12:00:00+08:00', 'Week 13'],
+  ['Monday', '2026-11-09T12:00:00+08:00', 'Week 13'],
+])(
+  'opens on the current week on %s, or next week on Sunday',
+  async (_day, now, week) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(now))
+    vi.mocked(fetchLectureSnapshot).mockResolvedValue(calendar)
+    try {
+      render(
+        <MemoryRouter>
+          <TimetablePage />
+        </MemoryRouter>,
+      )
+      const navigator = screen.getByLabelText('Week navigator')
+      await waitFor(() => within(navigator).getByText(week, { exact: true }))
+    } finally {
+      vi.useRealTimers()
+    }
+  },
+)
+
+it('stays on Week 1 when the lecture calendar is for another term', async () => {
+  vi.mocked(fetchLectureSnapshot).mockResolvedValue({
+    ...calendar,
+    pointer: { ...calendarPointer, semester: 2 },
+  })
+  render(
+    <MemoryRouter>
+      <TimetablePage />
+    </MemoryRouter>,
+  )
+  await waitFor(() => expect(fetchLectureSnapshot).toHaveBeenCalled())
+  await act(() => Promise.resolve())
+  expect(
+    within(screen.getByLabelText('Week navigator')).getByText('Week 1', {
+      exact: true,
+    }),
+  ).toBeTruthy()
 })

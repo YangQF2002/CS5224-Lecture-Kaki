@@ -240,15 +240,25 @@ export function singaporeNow(date = new Date()): {
   }
 }
 
-// The week containing today, else the next week with lectures, else the last.
+// The date to plan a week around: on Sunday the week is over, so use Monday.
+export function planningDate(today: string): string {
+  const date = new Date(`${today}T00:00:00Z`)
+  if (date.getUTCDay() !== 0) return today
+  date.setUTCDate(date.getUTCDate() + 1)
+  return date.toISOString().slice(0, 10)
+}
+
+// The week containing today (the next week on Sundays, once the week is
+// over), else the next week with lectures, else the last.
 export function chooseDefaultWeek(
   weeks: LectureWeek[],
   today: string,
 ): string | null {
+  const date = planningDate(today)
   const current = weeks.find(
-    (week) => week.startDate <= today && today <= week.endDate,
+    (week) => week.startDate <= date && date <= week.endDate,
   )
-  const upcoming = weeks.find((week) => week.startDate > today)
+  const upcoming = weeks.find((week) => week.startDate > date)
 
   return (current ?? upcoming ?? weeks.at(-1))?.week ?? null
 }

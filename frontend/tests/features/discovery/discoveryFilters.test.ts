@@ -149,6 +149,8 @@ const weeks: LectureWeek[] = [
 
 it.each([
   ['2026-10-27', 'week-11'],
+  ['2026-10-24', 'week-10'], // Saturday: still this week
+  ['2026-10-25', 'week-11'], // Sunday: next week
   ['2026-08-01', 'week-10'],
   ['2026-12-01', 'week-11'],
 ])('chooses the default week for %s', (today, expected) => {
