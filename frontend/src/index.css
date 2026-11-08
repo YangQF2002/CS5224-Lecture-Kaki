@@ -128,7 +128,9 @@ button.secondary:hover:not(:disabled),
   background: var(--soft);
   border-color: #c9cfc3;
 }
-:is(a, button, input, select, textarea, summary):focus-visible {
+:is(a, button, input, select, textarea, summary):focus-visible,
+/* Focus moved by a Tab we handle ourselves; Safari shows no ring for it. */
+[data-keyboard-focus] {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
@@ -455,6 +457,27 @@ button.sidebar-account[aria-expanded='true'] {
   padding: 1rem var(--page-gutter);
   border-bottom: 1px solid var(--border);
 }
+.app-topbar-start {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+button.sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 0.4rem;
+  margin-left: -0.4rem;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+}
+button.sidebar-toggle:hover {
+  color: var(--ink);
+  background: var(--soft);
+}
 .app-breadcrumb {
   display: flex;
   align-items: center;
@@ -600,6 +623,12 @@ button.radix-select-trigger:hover:not(:disabled) {
   color: var(--accent);
 }
 @media (min-width: 761px) {
+  .app-layout.is-sidebar-hidden {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app-layout.is-sidebar-hidden .app-sidebar {
+    display: none;
+  }
   .app-sidebar {
     --text-small: calc(0.8rem - 1px);
     --text-label: calc(0.9rem - 1px);
@@ -682,7 +711,8 @@ button.radix-select-trigger:hover:not(:disabled) {
     min-height: 3.4rem;
     padding-block: 0.8rem;
   }
-  .campus-label {
+  .campus-label,
+  button.sidebar-toggle {
     display: none;
   }
   .discover-page,

@@ -1,7 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+} from 'react'
 import { Link } from 'react-router'
 import Icon from '../../Icon.tsx'
 import { SignInRequired, getAccessToken } from '../forum/auth.ts'
+// prettier-ignore
+import { chooseDefaultWeek, singaporeNow } from '../discovery/discoveryFilters.ts'
+import { fetchLectureSnapshot } from '../discovery/lectureApi.ts'
 import SelectField, { EMPTY_SELECT_VALUE } from '../../SelectField.tsx'
 import { fetchModule, fetchModuleList, isAcademicYear } from './nusmodsApi.ts'
 import {
@@ -9,6 +20,7 @@ import {
   resolveImportedTimetable,
 } from './shareLinkParser.ts'
 import { loadTimetable, saveTimetable } from './timetableStorage.ts'
+import { searchModules } from './moduleSearch.ts'
 import {
   getRemoteTimetable,
   saveRemoteTimetable,
@@ -41,6 +53,7 @@ const DEFAULT_START_MINUTES = 8 * 60
 const DEFAULT_END_MINUTES = 21 * 60
 const DAY_ROW_HEIGHT_REM = 4.8
 const LESSON_BLOCK_HEIGHT_REM = 4
+const SEARCH_PAGE_SIZE = 20
 const WEEK_OPTIONS = [
   ...Array.from({ length: 6 }, (_, index) => `Week ${index + 1}`),
   'Recess Week',
@@ -93,6 +106,17 @@ function teachingWeekForIndex(index: number): number | null {
   return null
 }
 
+// Position in WEEK_OPTIONS for a lecture-calendar week such as "week-07".
+function weekIndexFor(week: string): number {
+  const teaching = /^week-(\d+)$/.exec(week)
+  if (teaching) {
+    const number = Number(teaching[1])
+    return number <= 6 ? number - 1 : number
+  }
+  if (week === 'recess') return 6
+  return WEEK_OPTIONS.length - 1 // Reading week, then exams.
+}
+
 function lessonIsInTeachingWeek(weeks: Weeks, teachingWeek: number): boolean {
   if (Array.isArray(weeks)) return weeks.includes(teachingWeek)
   if (weeks.weeks) return weeks.weeks.includes(teachingWeek)
@@ -127,6 +151,15 @@ function TimetablePage() {
   const [moduleList, setModuleList] = useState<ModuleSummary[]>([])
   const [modules, setModules] = useState<Record<string, NusmodsModule>>({})
   const [moduleQuery, setModuleQuery] = useState('')
+  const [resultLimit, setResultLimit] = useState(SEARCH_PAGE_SIZE)
+  // Highlighted search result (↓/↑); -1 when none. Focus stays in the
+  // search box, which also works in Safari (it won't focus clicked buttons).
+  const [activeResult, setActiveResult] = useState(-1)
+  const resultsRef = useRef<HTMLUListElement>(null)
+  const resultsId = useId()
+  const moduleInputRef = useRef<HTMLInputElement>(null)
+  const groupPickerRef = useRef<HTMLDivElement>(null)
+  const lastPointer = useRef<{ x: number; y: number } | null>(null)
   const [selectedModule, setSelectedModule] = useState<NusmodsModule | null>(
     null,
   )
@@ -136,8 +169,33 @@ function TimetablePage() {
   const [moduleLoadError, setModuleLoadError] = useState('')
   const [loading, setLoading] = useState(false)
   const [selectedWeekIndex, setSelectedWeekIndex] = useState(0)
+  const weekChosenByUser = useRef(false)
   const requestId = useRef(0)
   const backendHydrated = useRef(false)
+
+  // Open on the current week (next week on Sundays) when the lecture calendar
+  // covers this term. Otherwise, or if it can't load, stay on Week 1.
+  useEffect(() => {
+    let cancelled = false
+    weekChosenByUser.current = false
+    fetchLectureSnapshot().then(
+      ({ pointer, index }) => {
+        if (
+          cancelled ||
+          weekChosenByUser.current ||
+          pointer.acadYear !== timetable.academicYear ||
+          pointer.semester !== timetable.semester
+        )
+          return
+        const week = chooseDefaultWeek(index.weeks, singaporeNow().date)
+        if (week) setSelectedWeekIndex(weekIndexFor(week))
+      },
+      () => {},
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [timetable.academicYear, timetable.semester])
 
   function resetPicker() {
     // An earlier request may finish after a term change or a newer picker action.
@@ -335,22 +393,61 @@ function TimetablePage() {
     }
   }, [timetable.academicYear, timetable.selections])
 
-  const searchResults = useMemo(() => {
-    const query = moduleQuery.trim().toLowerCase()
+  const searchMatches = useMemo(
+    () => searchModules(moduleList, moduleQuery, timetable.semester),
+    [moduleList, moduleQuery, timetable.semester],
+  )
+  const searchResults = searchMatches.slice(0, resultLimit)
 
-    if (!query) {
-      return []
+  function highlightResult(index: number) {
+    setActiveResult(index)
+    resultsRef.current?.children[index]?.scrollIntoView({ block: 'nearest' })
+  }
+
+  function handleSearchKeys(event: KeyboardEvent<HTMLInputElement>) {
+    if (selectedModule || searchResults.length === 0) return
+    // Ignore keys used to finish typing with an input method (e.g. pinyin).
+    if (event.nativeEvent.isComposing) return
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      highlightResult(Math.min(activeResult + 1, searchResults.length - 1))
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      highlightResult(Math.max(activeResult - 1, -1))
+    } else if (event.key === 'Escape') {
+      setActiveResult(-1)
+    } else if (event.key === 'Enter') {
+      // The highlighted result, or the top one.
+      event.preventDefault()
+      void chooseModule(searchResults[Math.max(activeResult, 0)].moduleCode)
     }
+  }
 
-    return moduleList
-      .filter(
-        (module) =>
-          module.semesters.includes(timetable.semester) &&
-          (module.moduleCode.toLowerCase().includes(query) ||
-            module.title.toLowerCase().includes(query)),
-      )
-      .slice(0, 12)
-  }, [moduleList, moduleQuery, timetable.semester])
+  // Tab between the search box, the lesson pickers and "Add selected
+  // groups". Done by hand because Safari's Tab skips buttons by default.
+  function handlePickerTab(event: KeyboardEvent<HTMLElement>) {
+    if (event.key !== 'Tab' || !selectedModule) return
+    const candidates: (HTMLElement | null)[] = [
+      moduleInputRef.current,
+      ...(groupPickerRef.current?.querySelectorAll<HTMLButtonElement>(
+        'button:not(:disabled)',
+      ) ?? []),
+    ]
+    const stops = candidates.filter(
+      (element): element is HTMLElement => element !== null,
+    )
+    const index = stops.indexOf(document.activeElement as HTMLElement)
+    const next = stops[index + (event.shiftKey ? -1 : 1)]
+    if (index < 0 || !next) return // Leave the section as usual.
+    event.preventDefault()
+    next.focus()
+    // Safari doesn't treat focus moved by script as keyboard focus, so
+    // :focus-visible draws no ring. Mark it so the CSS can draw one.
+    next.dataset.keyboardFocus = ''
+    next.addEventListener('blur', () => delete next.dataset.keyboardFocus, {
+      once: true,
+    })
+  }
 
   const lessonGroups = useMemo(() => {
     if (!selectedModule) {
@@ -479,6 +576,9 @@ function TimetablePage() {
       setSelectedModule(module)
       setModuleQuery(`${module.moduleCode} — ${module.title}`)
       setGroupChoices({})
+      // Safari doesn't focus a clicked result, so put focus back in the search
+      // box; Tab then continues into the lesson pickers.
+      moduleInputRef.current?.focus()
     } catch (error) {
       if (currentRequest !== requestId.current) return
       setMessage(
@@ -672,9 +772,10 @@ function TimetablePage() {
               type="button"
               aria-label="Previous week"
               disabled={selectedWeekIndex === 0}
-              onClick={() =>
+              onClick={() => {
+                weekChosenByUser.current = true
                 setSelectedWeekIndex((index) => Math.max(0, index - 1))
-              }
+              }}
             >
               <span aria-hidden="true">‹</span>
             </button>
@@ -683,11 +784,12 @@ function TimetablePage() {
               type="button"
               aria-label="Next week"
               disabled={selectedWeekIndex === WEEK_OPTIONS.length - 1}
-              onClick={() =>
+              onClick={() => {
+                weekChosenByUser.current = true
                 setSelectedWeekIndex((index) =>
                   Math.min(WEEK_OPTIONS.length - 1, index + 1),
                 )
-              }
+              }}
             >
               <span aria-hidden="true">›</span>
             </button>
@@ -859,35 +961,84 @@ function TimetablePage() {
           </div>
         </section>
 
-        <section className="panel">
+        <section className="panel" onKeyDown={handlePickerTab}>
           <h2>Add a module</h2>
           <input
+            ref={moduleInputRef}
             value={moduleQuery}
             placeholder="Search by module code or title"
             aria-label="Search by module code or title"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls={resultsId}
+            aria-expanded={searchResults.length > 0 && !selectedModule}
+            aria-activedescendant={
+              activeResult >= 0 && !selectedModule
+                ? `${resultsId}-${activeResult}`
+                : undefined
+            }
             onChange={(event) => {
               resetPicker()
               setModuleQuery(event.target.value)
+              setResultLimit(SEARCH_PAGE_SIZE)
+              setActiveResult(-1)
             }}
+            onKeyDown={handleSearchKeys}
           />
 
           {searchResults.length > 0 && !selectedModule && (
-            <ul className="search-results">
-              {searchResults.map((module) => (
-                <li key={module.moduleCode}>
-                  <button
-                    type="button"
-                    onClick={() => void chooseModule(module.moduleCode)}
-                  >
-                    <strong>{module.moduleCode}</strong> {module.title}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul ref={resultsRef} id={resultsId} className="search-results">
+                {searchResults.map((module, index) => (
+                  <li key={module.moduleCode}>
+                    <button
+                      type="button"
+                      id={`${resultsId}-${index}`}
+                      className={
+                        index === activeResult ? 'is-active' : undefined
+                      }
+                      tabIndex={-1}
+                      // One highlight: the mouse moves it just like ↓/↑.
+                      onMouseMove={(event) => {
+                        // Only real mouse moves: browsers also send one when
+                        // ↓/↑ scroll the list under a still pointer.
+                        const { clientX, clientY } = event
+                        const last = lastPointer.current
+                        lastPointer.current = { x: clientX, y: clientY }
+                        if (last?.x === clientX && last.y === clientY) return
+                        if (index !== activeResult) setActiveResult(index)
+                      }}
+                      onClick={() => void chooseModule(module.moduleCode)}
+                    >
+                      <strong>{module.moduleCode}</strong> {module.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {searchMatches.length > searchResults.length && (
+                <button
+                  type="button"
+                  className="secondary search-more"
+                  onClick={() =>
+                    setResultLimit((limit) => limit + SEARCH_PAGE_SIZE)
+                  }
+                >
+                  Show more ({searchMatches.length - searchResults.length} more)
+                </button>
+              )}
+            </>
           )}
+          {moduleQuery.trim() &&
+            !selectedModule &&
+            moduleList.length > 0 &&
+            searchMatches.length === 0 && (
+              <p className="search-empty">
+                No modules match “{moduleQuery.trim()}” this semester.
+              </p>
+            )}
 
           {selectedModule && (
-            <div className="group-picker">
+            <div ref={groupPickerRef} className="group-picker">
               <h3>
                 {selectedModule.moduleCode}: {selectedModule.title}
               </h3>

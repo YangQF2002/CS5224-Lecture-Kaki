@@ -13,6 +13,8 @@ import ForumPage from '../../../src/features/forum/ForumPage.tsx'
 // prettier-ignore
 import { subscribeToRoom, type RoomEvent } from '../../../src/features/forum/forumSocket.ts'
 import { roomPath } from '../../../src/features/forum/roomCatalogue.ts'
+import { SignInRequired } from '../../../src/features/forum/auth.ts'
+import * as timetableApi from '../../../src/features/timetable/timetableApi.ts'
 
 vi.mock('../../../src/features/discovery/lectureApi.ts', () => ({
   fetchLectureSnapshot: vi.fn(),
@@ -27,6 +29,15 @@ vi.mock('../../../src/features/forum/forumApi.ts', async (original) => ({
   postMessage: vi.fn(),
   deleteMessage: vi.fn(),
 }))
+vi.mock(
+  '../../../src/features/timetable/timetableApi.ts',
+  async (original) => ({
+    ...(await original<
+      typeof import('../../../src/features/timetable/timetableApi.ts')
+    >()),
+    getRemoteTimetable: vi.fn(),
+  }),
+)
 vi.mock('../../../src/features/forum/forumSocket.ts', () => ({
   subscribeToRoom: vi.fn(),
 }))
@@ -42,6 +53,7 @@ vi.mock('../../../src/features/forum/forumPdf.ts', async (original) => ({
 const api = vi.mocked(forumApi)
 const pdf = vi.mocked(pdfApi)
 const lectures = vi.mocked(lectureApi)
+const accountTimetable = vi.mocked(timetableApi.getRemoteTimetable)
 
 const lecture: LectureSession = {
   id: 'BT1101-LEC-01@2026-10-20-0800-LT11',
@@ -142,6 +154,7 @@ beforeEach(() => {
   document.cookie = 'lecturekaki:login-hint:v1=; Max-Age=0; Path=/'
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
   lectures.fetchLectureSnapshot.mockResolvedValue(snapshot)
+  accountTimetable.mockRejectedValue(new SignInRequired())
   lectures.fetchWeekSessions.mockImplementation(async (_pointer, week) => ({
     ...weeks.find((item) => item.week === week)!,
     sessions: [week === 'week-10' ? lecture : laterLecture],
@@ -218,6 +231,102 @@ it('returns to the picker with its filters when that was the last Forum screen',
   expect(
     await screen.findByRole('heading', { name: 'CS5224 discussion' }),
   ).toBeTruthy()
+})
+
+it('lists timetable modules first, then sorts by date and time', async () => {
+  const session = (code: string, date: string, time: string) => ({
+    ...lecture,
+    id: `${code}-LEC-01@${date}-${time.replace(':', '')}-LT11`,
+    moduleCode: code,
+    date,
+    startTime: time,
+  })
+  lectures.fetchWeekSessions.mockResolvedValue({
+    ...weeks[0],
+    sessions: [
+      session('BT1101', '2026-10-20', '10:00'),
+      session('CS5224', '2026-10-22', '09:00'),
+      session('BT1101', '2026-10-20', '08:00'),
+      session('CS2040', '2026-10-21', '08:00'),
+    ],
+  })
+  localStorage.setItem(
+    'lecture-kaki:timetable:v1',
+    JSON.stringify({
+      academicYear: '2026-2027',
+      semester: 1,
+      selections: ['CS5224', 'CS2040'].map((moduleCode) => ({
+        moduleCode,
+        moduleTitle: moduleCode,
+        lessonType: 'Lecture',
+        classNo: '01',
+      })),
+    }),
+  )
+  const { container } = renderForum('/forum?browse=1&week=week-10')
+  await screen.findByText('4 lectures in Week 10')
+
+  const order = [...container.querySelectorAll('.forum-lecture')].map(
+    (card) =>
+      `${card.querySelector('h2')!.firstChild!.textContent!.trim()} ${
+        card.querySelector('p')!.textContent
+      }`.split('–')[0],
+  )
+  expect(order).toEqual([
+    'CS2040 Wed, 21 Oct · 08:00',
+    'CS5224 Thu, 22 Oct · 09:00',
+    'BT1101 Tue, 20 Oct · 08:00',
+    'BT1101 Tue, 20 Oct · 10:00',
+  ])
+  expect(screen.getAllByText('In your timetable')).toHaveLength(2)
+})
+
+it("uses a signed-in user's account timetable over this browser's copy", async () => {
+  const session = (code: string, time: string) => ({
+    ...lecture,
+    id: `${code}-LEC-01@2026-10-20-${time.replace(':', '')}-LT11`,
+    moduleCode: code,
+    startTime: time,
+  })
+  lectures.fetchWeekSessions.mockResolvedValue({
+    ...weeks[0],
+    sessions: [session('BT1101', '08:00'), session('CS5224', '10:00')],
+  })
+  // This browser's copy is out of date; the account has CS5224.
+  localStorage.setItem(
+    'lecture-kaki:timetable:v1',
+    JSON.stringify({
+      academicYear: '2026-2027',
+      semester: 1,
+      selections: [
+        {
+          moduleCode: 'BT1101',
+          moduleTitle: 'BT1101',
+          lessonType: 'Lecture',
+          classNo: '01',
+        },
+      ],
+    }),
+  )
+  const cs5224 = {
+    moduleCode: 'CS5224',
+    moduleTitle: 'Cloud Computing',
+    lessonType: 'Lecture',
+    classNo: '01',
+  }
+  accountTimetable.mockResolvedValue({
+    academicYear: '2026-2027',
+    semesters: { 1: [cs5224], 2: [], 3: [], 4: [] },
+  })
+  const { container } = renderForum('/forum?browse=1&week=week-10')
+  await screen.findByText('2 lectures in Week 10')
+
+  const codes = () =>
+    [...container.querySelectorAll('.forum-lecture h2')].map((heading) =>
+      heading.firstChild!.textContent!.trim(),
+    )
+  await waitFor(() => expect(codes()).toEqual(['CS5224', 'BT1101']))
+  expect(screen.getAllByText('In your timetable')).toHaveLength(1)
 })
 
 it('opens shared links from the picker and another room while preserving drafts', async () => {

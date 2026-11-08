@@ -7,6 +7,10 @@ import { chooseDefaultWeek, singaporeNow, weekName } from '../discovery/discover
 // prettier-ignore
 import { fetchLectureSnapshot, fetchWeekSessions } from '../discovery/lectureApi.ts'
 import type { LectureSnapshot, WeekSessions } from '../discovery/types.ts'
+import { getRemoteTimetable } from '../timetable/timetableApi.ts'
+import { loadTimetable } from '../timetable/timetableStorage.ts'
+import type { Semester, TimetableBook } from '../timetable/types.ts'
+import { getAccessToken } from './auth.ts'
 // prettier-ignore
 import { lectureDate, lectureTime, parseRoomId, roomIdFor, roomPath } from './roomCatalogue.ts'
 import { lastForumPath, lastRoom, rememberPicker } from './roomSession.ts'
@@ -28,6 +32,9 @@ function LecturePicker() {
   } | null>(null)
   const [weekError, setWeekError] = useState('')
   const [shown, setShown] = useState({ key: '', count: PAGE_SIZE })
+  const [timetable] = useState(loadTimetable)
+  const [accountTimetable, setAccountTimetable] =
+    useState<TimetableBook | null>(null)
   const query = params.get('q') ?? ''
   const selectedWeek =
     snapshot?.index.weeks.find((week) => week.week === params.get('week')) ??
@@ -75,6 +82,22 @@ function LecturePicker() {
     }
   }, [snapshot, selectedWeek, retry])
 
+  // Signed-in users: use the timetable saved to their account, which this
+  // browser may not have yet (e.g. a new device). Signed-out users, or any
+  // failure, keep the copy saved in this browser.
+  useEffect(() => {
+    let cancelled = false
+    getRemoteTimetable(getAccessToken).then(
+      (book) => {
+        if (!cancelled) setAccountTimetable(book)
+      },
+      () => {},
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   function update(name: string, value: string) {
     const next = new URLSearchParams(params)
     next.set('browse', '1')
@@ -82,6 +105,24 @@ function LecturePicker() {
     else next.delete(name)
     setParams(next, { replace: true })
   }
+
+  // Modules in the user's timetable for the term the lecture list covers.
+  const timetableCodes = useMemo(() => {
+    if (!snapshot) return new Set<string>()
+    const { acadYear } = snapshot.pointer
+    const semester = snapshot.pointer.semester as Semester
+    let selections =
+      accountTimetable?.academicYear === acadYear
+        ? (accountTimetable.semesters[semester] ?? [])
+        : null
+    if (!selections && timetable.academicYear === acadYear) {
+      selections =
+        semester === timetable.semester
+          ? timetable.selections
+          : (timetable.semesterSelections?.[semester] ?? [])
+    }
+    return new Set(selections?.map((selection) => selection.moduleCode))
+  }, [snapshot, timetable, accountTimetable])
 
   const sessions = useMemo(() => {
     if (
@@ -91,15 +132,25 @@ function LecturePicker() {
     )
       return null
     const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
-    return weekData.data.sessions.filter((session) => {
-      const text =
-        `${session.moduleCode} ${session.moduleTitle} ${session.venue}`.toLowerCase()
-      return (
-        words.every((word) => text.includes(word)) &&
-        !!parseRoomId(roomIdFor(session, snapshot.pointer))
+    return weekData.data.sessions
+      .filter((session) => {
+        const text =
+          `${session.moduleCode} ${session.moduleTitle} ${session.venue}`.toLowerCase()
+        return (
+          words.every((word) => text.includes(word)) &&
+          !!parseRoomId(roomIdFor(session, snapshot.pointer))
+        )
+      })
+      .sort(
+        // Timetable modules first, then by date and start time.
+        (a, b) =>
+          Number(timetableCodes.has(b.moduleCode)) -
+            Number(timetableCodes.has(a.moduleCode)) ||
+          a.date.localeCompare(b.date) ||
+          a.startTime.localeCompare(b.startTime) ||
+          a.moduleCode.localeCompare(b.moduleCode),
       )
-    })
-  }, [snapshot, weekData, selectedWeek, query])
+  }, [snapshot, weekData, selectedWeek, query, timetableCodes])
   const resultKey = `${selectedWeek?.week}:${query}`
   const visible = shown.key === resultKey ? shown.count : PAGE_SIZE
   const previous = lastRoom()
@@ -206,6 +257,12 @@ function LecturePicker() {
                     {lectureTime(session.startTime)}–
                     {lectureTime(session.endTime)} · {session.venue}
                   </p>
+                  {timetableCodes.has(session.moduleCode) && (
+                    <p className="forum-in-timetable">
+                      <Icon name="check" />
+                      In your timetable
+                    </p>
+                  )}
                 </div>
                 <Link
                   className="forum-join button-link secondary"

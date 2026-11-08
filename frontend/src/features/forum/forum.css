@@ -114,6 +114,17 @@
   font-size: var(--text-small);
   line-height: 1.6;
 }
+.forum-lecture p.forum-in-timetable {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.3rem;
+  color: var(--green);
+}
+.forum-in-timetable .icon {
+  width: 0.9rem;
+  height: 0.9rem;
+}
 .forum-join {
   font-size: var(--text-small);
 }

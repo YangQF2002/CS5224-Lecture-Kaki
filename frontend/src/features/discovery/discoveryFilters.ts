@@ -137,6 +137,76 @@ export function buildSearchText(modules: LectureModule[]): Map<string, string> {
   )
 }
 
+// The parts of a module that search results are ranked on, lowercased.
+export type RankFields = { code: string; title: string; topics: string }
+
+export function buildRankFields(
+  modules: LectureModule[],
+): Map<string, RankFields> {
+  return new Map(
+    modules.map((module) => [
+      module.moduleCode,
+      {
+        code: module.moduleCode.toLowerCase(),
+        title: module.title.toLowerCase(),
+        topics: (module.topics ?? []).join(' ').toLowerCase(),
+      },
+    ]),
+  )
+}
+
+// How well a lecture matches the search; lower is better. Every lecture passed
+// in already matches somewhere (description included).
+function searchRank(
+  session: LectureSession,
+  query: string,
+  terms: string[],
+  fields: RankFields | undefined,
+): number {
+  const code = fields?.code ?? session.moduleCode.toLowerCase()
+  const title = fields?.title ?? session.moduleTitle.toLowerCase()
+  const compact = query.replace(/\s+/g, '')
+  if (code.startsWith(compact)) return 0
+  if (title.startsWith(query)) return 1
+  const starts = [code, ...title.split(/[^a-z0-9]+/)]
+  if (terms.every((term) => starts.some((start) => start.startsWith(term))))
+    return 2
+  const codeAndTitle = `${code} ${title}`
+  if (terms.every((term) => codeAndTitle.includes(term))) return 3
+  const withTopics = `${codeAndTitle} ${fields?.topics ?? ''}`
+  if (terms.every((term) => withTopics.includes(term))) return 4
+  return 5 // Only the description matches.
+}
+
+// Keeps lectures grouped by day, with the best search matches first in each
+// day; equally good matches keep their order (by start time).
+export function rankWithinDays(
+  sessions: LectureSession[],
+  query: string,
+  fields: Map<string, RankFields>,
+): LectureSession[] {
+  const normalized = query.trim().toLowerCase().replace(/\s+/g, ' ')
+  if (!normalized) return sessions
+  const terms = normalized.split(' ')
+  return sessions
+    .map((session) => ({
+      session,
+      rank: searchRank(
+        session,
+        normalized,
+        terms,
+        fields.get(session.moduleCode),
+      ),
+    }))
+    .sort(
+      (a, b) =>
+        a.session.date.localeCompare(b.session.date) ||
+        a.rank - b.rank ||
+        a.session.startTime.localeCompare(b.session.startTime),
+    )
+    .map(({ session }) => session)
+}
+
 // Snapshots published before topic tagging have no topics.
 export function buildTopicsByCode(
   modules: LectureModule[],
@@ -240,15 +310,25 @@ export function singaporeNow(date = new Date()): {
   }
 }
 
-// The week containing today, else the next week with lectures, else the last.
+// The date to plan a week around: on Sunday the week is over, so use Monday.
+export function planningDate(today: string): string {
+  const date = new Date(`${today}T00:00:00Z`)
+  if (date.getUTCDay() !== 0) return today
+  date.setUTCDate(date.getUTCDate() + 1)
+  return date.toISOString().slice(0, 10)
+}
+
+// The week containing today (the next week on Sundays, once the week is
+// over), else the next week with lectures, else the last.
 export function chooseDefaultWeek(
   weeks: LectureWeek[],
   today: string,
 ): string | null {
+  const date = planningDate(today)
   const current = weeks.find(
-    (week) => week.startDate <= today && today <= week.endDate,
+    (week) => week.startDate <= date && date <= week.endDate,
   )
-  const upcoming = weeks.find((week) => week.startDate > today)
+  const upcoming = weeks.find((week) => week.startDate > date)
 
   return (current ?? upcoming ?? weeks.at(-1))?.week ?? null
 }

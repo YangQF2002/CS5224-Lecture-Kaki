@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import SelectField from '../../SelectField.tsx'
+import { focusClickedField, focusNeighbour } from '../../focusNeighbour.ts'
 import Icon from '../../Icon.tsx'
 import DiscoveryHeader from './DiscoveryHeader.tsx'
 import DiscoveryRail from './DiscoveryRail.tsx'
@@ -20,6 +21,8 @@ import {
   chooseDefaultWeek,
   codePrefix,
   filterSessions,
+  buildRankFields,
+  rankWithinDays,
   filtersToParams,
   fromMinutes,
   parseFilters,
@@ -282,6 +285,10 @@ function DiscoverPage() {
     () => buildSearchText(snapshot?.modules ?? []),
     [snapshot],
   )
+  const rankFields = useMemo(
+    () => buildRankFields(snapshot?.modules ?? []),
+    [snapshot],
+  )
   const topicsByCode = useMemo(
     () => buildTopicsByCode(snapshot?.modules ?? []),
     [snapshot],
@@ -302,27 +309,32 @@ function DiscoverPage() {
   const results = useMemo(
     () =>
       sessions
-        ? filterSessions(
-            sessions,
-            activeFilters,
-            searchText,
-            topicsByCode,
-            interestSet,
-          ).filter(
-            (session) =>
-              !filters.hideClashes ||
-              timetableCheck !== 'ready' ||
-              sessionClashes(
-                session,
-                teachingWeek(selectedWeek?.week ?? ''),
-                timetableLessons,
-              ).length === 0,
+        ? rankWithinDays(
+            filterSessions(
+              sessions,
+              activeFilters,
+              searchText,
+              topicsByCode,
+              interestSet,
+            ).filter(
+              (session) =>
+                !filters.hideClashes ||
+                timetableCheck !== 'ready' ||
+                sessionClashes(
+                  session,
+                  teachingWeek(selectedWeek?.week ?? ''),
+                  timetableLessons,
+                ).length === 0,
+            ),
+            activeFilters.query,
+            rankFields,
           )
         : [],
     [
       sessions,
       activeFilters,
       searchText,
+      rankFields,
       topicsByCode,
       interestSet,
       filters.hideClashes,
@@ -535,6 +547,25 @@ function DiscoverPage() {
         className="discovery-search"
         aria-label="Lecture filters"
         onSubmit={(event) => event.preventDefault()}
+        // Safari doesn't focus a clicked checkbox or button, so Tab would start
+        // from nowhere; focus it so Tab and Shift+Tab start from the click.
+        onClick={(event) => focusClickedField(event.target as Element)}
+        onKeyDown={(event) => {
+          const target = event.target as Element
+          if (
+            event.key !== 'Tab' ||
+            event.altKey ||
+            event.metaKey ||
+            event.defaultPrevented ||
+            // Dropdowns handle their own Tab; time inputs use Tab for their
+            // hour and minute parts.
+            target.closest('.multi-select') ||
+            target.matches('input[type="time"]')
+          ) {
+            return
+          }
+          if (focusNeighbour(target, event.shiftKey)) event.preventDefault()
+        }}
       >
         <div className="discovery-searchbar">
           <label className="discovery-query">
@@ -711,6 +742,9 @@ function DiscoverPage() {
                   key={level}
                   type="button"
                   className="chip"
+                  // Kept out of the Tab order so Tab goes from Minimum class
+                  // size straight to the checkboxes below.
+                  tabIndex={-1}
                   aria-pressed={filters.levels.includes(level)}
                   onClick={() =>
                     updateFilters({
@@ -754,6 +788,8 @@ function DiscoverPage() {
           <label className="checkbox">
             <input
               type="checkbox"
+              // Left out of the Tab order; click to toggle.
+              tabIndex={-1}
               checked={filters.includeOnline}
               onChange={(event) =>
                 updateFilters({ includeOnline: event.target.checked })
@@ -791,6 +827,8 @@ function DiscoverPage() {
             >
               <input
                 type="checkbox"
+                // Left out of the Tab order; click to toggle.
+                tabIndex={-1}
                 checked={filters.hideClashes}
                 disabled={timetableCheck !== 'ready'}
                 onChange={(event) =>

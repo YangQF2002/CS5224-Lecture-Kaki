@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router'
 import Icon, { type IconName } from './Icon.tsx'
 import AccountMenu from './features/profile/AccountMenu.tsx'
@@ -10,8 +10,28 @@ const navigation: { to: string; label: string; icon: IconName }[] = [
   { to: '/profile', label: 'Profile', icon: 'user' },
 ]
 
+const SIDEBAR_HIDDEN_KEY = 'lecturekaki:sidebar-hidden'
+
+function readSidebarHidden() {
+  try {
+    return localStorage.getItem(SIDEBAR_HIDDEN_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 function App() {
   const { pathname } = useLocation()
+  const [sidebarHidden, setSidebarHidden] = useState(readSidebarHidden)
+  function toggleSidebar() {
+    const next = !sidebarHidden
+    setSidebarHidden(next)
+    try {
+      localStorage.setItem(SIDEBAR_HIDDEN_KEY, next ? '1' : '0')
+    } catch {
+      // Storage can be unavailable (e.g. private mode); the toggle still works.
+    }
+  }
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
   }, [pathname])
@@ -21,11 +41,11 @@ function App() {
     )?.label ?? 'Your account'
 
   return (
-    <div className="app-layout">
+    <div className={`app-layout${sidebarHidden ? ' is-sidebar-hidden' : ''}`}>
       <a className="skip-link" href="#main-content">
         Skip to content
       </a>
-      <aside className="app-sidebar">
+      <aside id="app-sidebar" className="app-sidebar">
         <Link to="/" className="app-brand" aria-label="LectureKaki home">
           <span className="brand-mark" aria-hidden="true">
             k
@@ -68,10 +88,23 @@ function App() {
       </aside>
       <div className="app-main">
         <header className="app-topbar">
-          <div className="app-breadcrumb">
-            <span>Your campus</span>
-            <span aria-hidden="true">/</span>
-            <strong>{currentPage}</strong>
+          <div className="app-topbar-start">
+            <button
+              type="button"
+              className="sidebar-toggle"
+              aria-controls="app-sidebar"
+              aria-expanded={!sidebarHidden}
+              aria-label={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+              title={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+              onClick={toggleSidebar}
+            >
+              <Icon name="menu" />
+            </button>
+            <div className="app-breadcrumb">
+              <span>Your campus</span>
+              <span aria-hidden="true">/</span>
+              <strong>{currentPage}</strong>
+            </div>
           </div>
           <span className="campus-label">
             <span />

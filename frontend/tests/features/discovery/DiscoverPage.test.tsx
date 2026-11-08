@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -233,11 +234,95 @@ it('filters by building with counts for the selected week', async () => {
   await screen.findByText('2 lectures in Week 11')
 
   fireEvent.click(screen.getByText('Filters'))
-  const buildings = screen.getByText('Buildings').closest('details')!
+  const buildings = screen
+    .getByText('Buildings')
+    .closest<HTMLElement>('.multi-select-field')!
   fireEvent.click(within(buildings).getByLabelText(/COM1/))
 
   expect(screen.getByText('1 lecture in Week 11')).toBeTruthy()
   expect(screen.getByTestId('location').textContent).toBe('?buildings=COM1')
+})
+
+it('ticks the first search match on Enter, then closes on Enter', async () => {
+  renderPage()
+  await screen.findByText('2 lectures in Week 11')
+
+  fireEvent.click(screen.getByText('Filters'))
+  const buildings = screen
+    .getByText('Buildings')
+    .closest<HTMLElement>('.multi-select-field')!
+  const details = buildings.querySelector('details')!
+  fireEvent.click(details.querySelector('summary')!)
+  // <details> fires its toggle event asynchronously.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+  expect(details.open).toBe(true)
+
+  const search = within(buildings).getByLabelText('Search buildings')
+  fireEvent.change(search, { target: { value: 'com' } })
+  fireEvent.keyDown(search, { key: 'Enter' })
+
+  expect(screen.getByTestId('location').textContent).toBe('?buildings=COM1')
+  expect((search as HTMLInputElement).value).toBe('com')
+  expect(details.open).toBe(true)
+
+  fireEvent.keyDown(search, { key: 'Enter' })
+  expect(details.open).toBe(false)
+  expect(screen.getByTestId('location').textContent).toBe('?buildings=COM1')
+})
+
+it('moves Tab from Faculties to Minimum class size, closing the list', async () => {
+  renderPage()
+  await screen.findByText('2 lectures in Week 11')
+
+  fireEvent.click(screen.getByText('Filters'))
+  const faculties = screen
+    .getByText('Faculties')
+    .closest<HTMLElement>('.multi-select-field')!
+  const details = faculties.querySelector('details')!
+  const summary = details.querySelector('summary')!
+  const classSize = screen.getByLabelText('Minimum class size')
+
+  summary.focus()
+  fireEvent.keyDown(summary, { key: 'Tab' })
+  expect(document.activeElement).toBe(classSize)
+
+  fireEvent.click(summary)
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+  const search = within(faculties).getByLabelText('Search faculties')
+  search.focus()
+  fireEvent.keyDown(search, { key: 'Tab' })
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+  expect(document.activeElement).toBe(classSize)
+  expect(details.open).toBe(false)
+
+  summary.focus()
+  fireEvent.keyDown(summary, { key: 'Tab', shiftKey: true })
+  expect(document.activeElement).toBe(
+    screen
+      .getByText('Subject codes')
+      .closest('.multi-select-field')!
+      .querySelector('summary'),
+  )
+
+  // Levels are skipped: Tab goes on to the "Only my topics" row.
+  const myTopics = document.querySelector<HTMLElement>(
+    '.my-topics input:not(:disabled), .my-topics a',
+  )!
+  fireEvent.keyDown(classSize, { key: 'Tab' })
+  expect(document.activeElement).toBe(myTopics)
+
+  // Clicking a checkbox focuses it (Safari doesn't), so Shift+Tab starts
+  // there and steps back to Minimum class size.
+  const online = screen.getByLabelText('Include online lectures')
+  summary.focus()
+  fireEvent.click(online)
+  expect(document.activeElement).toBe(online)
+  fireEvent.keyDown(online, { key: 'Tab', shiftKey: true })
+  expect(document.activeElement).toBe(myTopics)
+  fireEvent.keyDown(myTopics, { key: 'Tab', shiftKey: true })
+  expect(document.activeElement).toBe(classSize)
+  fireEvent.keyDown(classSize, { key: 'Tab', shiftKey: true })
+  expect(document.activeElement).toBe(summary)
 })
 
 it('toggles days and clears filters while keeping the week', async () => {
