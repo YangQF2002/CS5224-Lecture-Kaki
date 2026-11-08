@@ -130,6 +130,56 @@ it('adds a tutorial without removing the existing lecture', async () => {
   expect(selectedModules().getByText('Tutorial: 01')).toBeTruthy()
 })
 
+it('opens the top search result when Enter is pressed', async () => {
+  render(<TimetablePage />, { wrapper: MemoryRouter })
+  const search = screen.getByPlaceholderText('Search by module code or title')
+  fireEvent.change(search, { target: { value: 'synthetic' } })
+  await screen.findByRole('button', { name: 'CS1010 Synthetic module' })
+  fireEvent.keyDown(search, { key: 'Enter' })
+
+  expect(await screen.findByRole('combobox', { name: 'Lecture' })).toBeTruthy()
+  expect(fetchModule).toHaveBeenCalledWith('2026-2027', 'CS1010')
+})
+
+it('opens the result highlighted with the arrow keys', async () => {
+  vi.mocked(fetchModuleList).mockResolvedValue([
+    { moduleCode: 'CS1010', title: 'Synthetic module', semesters: [1] },
+    { moduleCode: 'CS1010S', title: 'Synthetic module S', semesters: [1] },
+  ])
+  render(<TimetablePage />, { wrapper: MemoryRouter })
+  const search = screen.getByPlaceholderText('Search by module code or title')
+  fireEvent.change(search, { target: { value: 'cs1010' } })
+  await screen.findByRole('button', { name: 'CS1010S Synthetic module S' })
+
+  fireEvent.keyDown(search, { key: 'ArrowDown' })
+  fireEvent.keyDown(search, { key: 'ArrowDown' })
+  expect(search.getAttribute('aria-activedescendant')).toBe(
+    screen.getByRole('button', { name: 'CS1010S Synthetic module S' }).id,
+  )
+  fireEvent.keyDown(search, { key: 'Enter' })
+
+  await waitFor(() =>
+    expect(fetchModule).toHaveBeenCalledWith('2026-2027', 'CS1010S'),
+  )
+})
+
+it('tabs from the search box through the lesson pickers', async () => {
+  render(<TimetablePage />, { wrapper: MemoryRouter })
+  await chooseModule()
+  const search = screen.getByPlaceholderText('Search by module code or title')
+  const lecture = screen.getByRole('combobox', { name: 'Lecture' })
+  const tutorial = screen.getByRole('combobox', { name: 'Tutorial' })
+  const add = screen.getByRole('button', { name: 'Add selected groups' })
+
+  search.focus()
+  for (const next of [lecture, tutorial, add]) {
+    fireEvent.keyDown(document.activeElement!, { key: 'Tab' })
+    expect(document.activeElement).toBe(next)
+  }
+  fireEvent.keyDown(add, { key: 'Tab', shiftKey: true })
+  expect(document.activeElement).toBe(tutorial)
+})
+
 it('restores an added lesson group after remounting', async () => {
   const page = render(<TimetablePage />, { wrapper: MemoryRouter })
   await chooseModule()

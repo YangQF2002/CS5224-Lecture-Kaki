@@ -62,6 +62,19 @@ Only `Lecture` lessons are published, excluding NUS-ISS courses. Session dates a
 
 Session IDs are `<moduleCode>-<lessonTypeCode>-<classNo>@<date>-<HHMM>-<venue>`. Preserve class-number leading zeroes and venue slashes. A changed date, start time or venue creates a different occurrence. Forum rooms append `@<acadYear>@<semester>`; URL-encode the whole room ID. The [browser](../frontend/src/features/forum/roomCatalogue.ts) checks an exact current-catalogue match; the backend validates format, date, time and academic year.
 
+## Search
+
+Search runs in the browser; neither search calls the API.
+
+- **Discover:** the query is split into words. A lecture matches when every word appears, in any order, in its module's code, title, description or topics ([`filterSessions`](../frontend/src/features/discovery/discoveryFilters.ts)). Venues and cross-listed codes are not searched; use the Buildings and Subject codes filters. Results stay grouped by day. Within each day, [`rankWithinDays`](../frontend/src/features/discovery/discoveryFilters.ts) orders matches best first, then by start time:
+  1. The code starts with the query (spaces ignored).
+  2. The title starts with the query.
+  3. Every word starts a word in the title, or starts the code.
+  4. Every word appears in the code or title.
+  5. Every word appears in the code, title or topics.
+  6. Only the description matches.
+- **Add a module (Timetable):** [`searchModules`](../frontend/src/features/timetable/moduleSearch.ts) filters NUSMods' `moduleList.json` for the selected academic year to modules offered in the selected semester whose code or title contains every word. It ranks an exact code first, then the same tiers as Discover without topics or descriptions, then by code. The page shows 20 results at a time.
+
 ## Persistence and live updates
 
 - **Timetables:** the [UI](../frontend/src/features/timetable/TimetablePage.tsx) loads/saves a four-semester book through `/timetable/semesters` and keeps local selections. The [API](../backend/app/modules/timetable/api.py) validates selections against NUSMods. The [repository](../backend/app/modules/timetable/repository.py) stores one record per Cognito `sub`, with last-write-wins replacement. Legacy `/timetable` routes remain supported.

@@ -20,6 +20,8 @@ import {
   chooseDefaultWeek,
   codePrefix,
   filterSessions,
+  buildRankFields,
+  rankWithinDays,
   filtersToParams,
   fromMinutes,
   parseFilters,
@@ -282,6 +284,10 @@ function DiscoverPage() {
     () => buildSearchText(snapshot?.modules ?? []),
     [snapshot],
   )
+  const rankFields = useMemo(
+    () => buildRankFields(snapshot?.modules ?? []),
+    [snapshot],
+  )
   const topicsByCode = useMemo(
     () => buildTopicsByCode(snapshot?.modules ?? []),
     [snapshot],
@@ -302,27 +308,32 @@ function DiscoverPage() {
   const results = useMemo(
     () =>
       sessions
-        ? filterSessions(
-            sessions,
-            activeFilters,
-            searchText,
-            topicsByCode,
-            interestSet,
-          ).filter(
-            (session) =>
-              !filters.hideClashes ||
-              timetableCheck !== 'ready' ||
-              sessionClashes(
-                session,
-                teachingWeek(selectedWeek?.week ?? ''),
-                timetableLessons,
-              ).length === 0,
+        ? rankWithinDays(
+            filterSessions(
+              sessions,
+              activeFilters,
+              searchText,
+              topicsByCode,
+              interestSet,
+            ).filter(
+              (session) =>
+                !filters.hideClashes ||
+                timetableCheck !== 'ready' ||
+                sessionClashes(
+                  session,
+                  teachingWeek(selectedWeek?.week ?? ''),
+                  timetableLessons,
+                ).length === 0,
+            ),
+            activeFilters.query,
+            rankFields,
           )
         : [],
     [
       sessions,
       activeFilters,
       searchText,
+      rankFields,
       topicsByCode,
       interestSet,
       filters.hideClashes,

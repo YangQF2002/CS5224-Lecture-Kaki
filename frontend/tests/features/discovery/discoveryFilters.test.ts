@@ -1,11 +1,13 @@
 import { expect, it } from 'vitest'
 import {
   DEFAULT_FILTERS,
+  buildRankFields,
   buildSearchText,
   chooseDefaultWeek,
   filterSessions,
   filtersToParams,
   parseFilters,
+  rankWithinDays,
   singaporeNow,
   weekName,
   type DiscoveryFilters,
@@ -172,4 +174,51 @@ it.each([
   ['exam-2', 'Exam week 2'],
 ])('names %s', (week, expected) => {
   expect(weekName(week)).toBe(expected)
+})
+
+it('ranks search matches best first within each day', () => {
+  const lecture = (
+    moduleCode: string,
+    title: string,
+    date: string,
+    startTime: string,
+    topics: string[] = [],
+  ) => ({
+    session: { ...session, moduleCode, moduleTitle: title, date, startTime },
+    module: { ...module, moduleCode, title, topics },
+  })
+  const lectures = [
+    lecture('CS3223', 'Database Systems', '2026-10-27', '08:00'),
+    lecture('EE1000', 'Signals', '2026-10-27', '09:00'), // description only
+    lecture('GEA1000', 'Reasoning with Data', '2026-10-27', '10:00'),
+    lecture('BT1000', 'Analytics', '2026-10-27', '11:00', ['Data & AI']),
+    lecture('ST1131', 'Introduction to Data Science', '2026-10-28', '08:00'),
+  ]
+  const fields = buildRankFields(lectures.map((item) => item.module))
+  const rank = (query: string) =>
+    rankWithinDays(
+      lectures.map((item) => item.session),
+      query,
+      fields,
+    ).map((result) => result.moduleCode)
+
+  // Title starts with it, then a title word, then a topic, then description;
+  // the next day's lectures still come after.
+  expect(rank('data')).toEqual([
+    'CS3223',
+    'GEA1000',
+    'BT1000',
+    'EE1000',
+    'ST1131',
+  ])
+  // A code match comes first; the rest keep their time order.
+  expect(rank('gea')).toEqual([
+    'GEA1000',
+    'CS3223',
+    'EE1000',
+    'BT1000',
+    'ST1131',
+  ])
+  // No search: unchanged.
+  expect(rank('')).toEqual(['CS3223', 'EE1000', 'GEA1000', 'BT1000', 'ST1131'])
 })

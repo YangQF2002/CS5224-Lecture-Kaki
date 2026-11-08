@@ -41,8 +41,28 @@
   border-radius: 0;
 }
 
-.search-results button:hover {
+/* One highlight: the shared keyboard/mouse one, not the global button hover. */
+.search-results button:hover:not(:disabled) {
+  background: white;
+  border-color: transparent;
+}
+.search-results button.is-active,
+.search-results button.is-active:hover:not(:disabled) {
   background: var(--accent-soft);
+}
+/* Focus moved by Tab in Add a module (see handlePickerTab). */
+[data-keyboard-focus] {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+button.search-more {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+.search-empty {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: var(--text-small);
 }
 
 .group-picker {
