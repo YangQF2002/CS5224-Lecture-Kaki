@@ -28,6 +28,10 @@ output "api_url" {
   value = local.api_url
 }
 
-output "api_instance_id" {
-  value = aws_instance.api.id
+output "forum_websocket_url" {
+  value = local.forum_websocket
+}
+
+output "api_function_name" {
+  value = aws_lambda_function.api.function_name
 }

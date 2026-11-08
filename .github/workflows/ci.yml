@@ -59,8 +59,8 @@ jobs:
       - name: Check Terraform formatting and configuration
         run: |
           terraform fmt -check -recursive infra/terraform
-          # validate only needs the ingestion package to exist; deploys build the real one.
-          mkdir -p build && touch build/ingest.zip
+          # validate only needs the Lambda packages to exist; deploys build the real ones.
+          mkdir -p build && touch build/ingest.zip build/api.zip
           for dir in infra/terraform infra/terraform/bootstrap infra/terraform/github; do
             terraform -chdir="$dir" init -backend=false -input=false
             terraform -chdir="$dir" validate

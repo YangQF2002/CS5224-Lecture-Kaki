@@ -38,9 +38,12 @@ NODES = {
     "web": ("aws/storage/simple-storage-service-s3-bucket.png", 740, 190, "S3 web bucket", "App and lecture snapshots"),
     "cognito": ("aws/security/cognito.png", 440, 350, "Cognito", "NUS sign-in, issues tokens"),
     "pre_signup": ("aws/compute/lambda.png", 740, 350, "Lambda: pre sign-up", "Allows @u.nus.edu only"),
-    "api": ("aws/compute/ec2.png", 440, 540, "EC2: FastAPI + Caddy", "REST and live forum"),
-    "tables": ("aws/database/dynamodb.png", 740, 500, "DynamoDB: 3 tables", "Forum, timetables, profiles"),
-    "pdfs": ("aws/storage/simple-storage-service-s3-bucket.png", 740, 625, "S3 forum PDFs", "Private, signed links only"),
+    "ws_api": ("aws/network/api-gateway.png", 440, 510, "API Gateway: WebSocket", "Holds live sockets"),
+    "live": ("aws/compute/lambda.png", 620, 510, "Lambda: forum live", "Connect, disconnect, ping"),
+    "http_api": ("aws/network/api-gateway.png", 440, 650, "API Gateway: HTTP API", "Every REST request"),
+    "api": ("aws/compute/lambda.png", 620, 650, "Lambda: FastAPI", "REST and live fan-out"),
+    "tables": ("aws/database/dynamodb.png", 800, 510, "DynamoDB: 3 tables", "Forum, timetables, profiles"),
+    "pdfs": ("aws/storage/simple-storage-service-s3-bucket.png", 800, 650, "S3 forum PDFs", "Private, signed links only"),
     "schedule": ("aws/integration/eventbridge-scheduler.png", 440, 880, "EventBridge Scheduler", "Mondays 03:00 SGT"),
     "ingest": ("aws/compute/lambda.png", 740, 880, "Lambda: ingest", "Builds lecture snapshots"),
     "bedrock": ("aws/ml/bedrock.png", 1060, 830, "Bedrock", "Tags module topics"),
@@ -54,26 +57,31 @@ GROUPS = [
     (330, 110, 1010, 935, "AWS Cloud (ap-southeast-1)"),
     (350, 135, 520, 130, "Static site"),
     (350, 290, 520, 135, "Sign-in"),
-    (350, 450, 520, 255, "API and data"),
+    (350, 450, 540, 290, "API and data"),
     (350, 770, 970, 260, "Scheduled ingest"),
 ]
 
 # (kind, points, label, label x, label y, label anchor, double-headed)
 EDGES = [
     # 1. App and lecture snapshots, no login.
-    (REQUEST, [(132, 410), (205, 410), (205, 190), (404, 190)], "HTTPS", 300, 182, "middle", False),
+    (REQUEST, [(132, 404), (205, 404), (205, 190), (404, 190)], "HTTPS", 300, 182, "middle", False),
     (REQUEST, [(476, 190), (704, 190)], "OAC", 590, 182, "middle", False),
     (REQUEST, [(100, 394), (100, 70), (1480, 70), (1480, 689)], "module list", 800, 62, "middle", False),
     # 2. Sign-in; the API verifies tokens with Cognito's public keys.
-    (AUTH, [(132, 427), (245, 427), (245, 350), (404, 350)], "hosted sign-in", 326, 342, "middle", False),
+    (AUTH, [(132, 418), (245, 418), (245, 350), (404, 350)], "hosted sign-in", 326, 342, "middle", False),
     (AUTH, [(476, 350), (704, 350)], "on sign-up", 590, 342, "middle", False),
-    (AUTH, [(440, 506), (440, 422)], "signing keys", 448, 494, "start", False),
-    # 3-4. REST and WebSocket (wss://) straight to the API's Elastic IP.
-    (REQUEST, [(132, 444), (225, 444), (225, 540), (404, 540)], "REST + WSS", 314, 532, "middle", False),
-    (REQUEST, [(476, 532), (704, 505)], "", 0, 0, "middle", True),
-    (REQUEST, [(476, 552), (704, 618)], "signs links", 600, 606, "middle", False),
-    (REQUEST, [(132, 460), (190, 460), (190, 645), (704, 645)], "PDF upload / download", 300, 637, "middle", False),
-    (REQUEST, [(476, 562), (520, 562), (520, 725), (1444, 725)], "checks timetables", 1150, 717, "middle", False),
+    (AUTH, [(640, 618), (640, 592), (680, 592), (680, 372), (476, 372)], "signing keys", 688, 470, "start", False),
+    # 3-4. REST through the HTTP API; live updates through the WebSocket API, which holds the sockets.
+    (REQUEST, [(132, 446), (225, 446), (225, 510), (408, 510)], "WSS", 309, 502, "middle", True),
+    (REQUEST, [(132, 460), (210, 460), (210, 650), (408, 650)], "HTTPS", 309, 642, "middle", False),
+    (REQUEST, [(472, 510), (588, 510)], "$connect", 530, 502, "middle", False),
+    (REQUEST, [(652, 510), (768, 510)], "", 0, 0, "middle", True),
+    (REQUEST, [(472, 650), (588, 650)], "invokes", 530, 642, "middle", False),
+    (REQUEST, [(598, 622), (472, 528)], "fan-out", 520, 604, "middle", False),
+    (REQUEST, [(652, 640), (768, 524)], "", 0, 0, "middle", True),
+    (REQUEST, [(652, 655), (768, 655)], "signs links", 710, 647, "middle", False),
+    (REQUEST, [(132, 432), (903, 432), (903, 642), (832, 642)], "PDF upload / download", 820, 444, "middle", False),
+    (REQUEST, [(652, 668), (695, 668), (695, 725), (1444, 725)], "checks timetables", 1150, 717, "middle", False),
     # 5-6. Weekly ingest and its error alerting.
     (INGEST, [(476, 880), (704, 880)], "weekly", 590, 872, "middle", False),
     (INGEST, [(776, 868), (920, 868), (920, 190), (776, 190)], "snapshot, then\ncurrent.json", 928, 300, "start", False),

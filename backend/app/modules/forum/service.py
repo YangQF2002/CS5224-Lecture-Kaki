@@ -136,3 +136,8 @@ def frontend_origins() -> list[str]:
     return [
         origin.strip().rstrip("/") for origin in configured.split(",") if origin.strip()
     ]
+
+
+def websocket_url() -> str:
+    """The API Gateway WebSocket stage URL; empty means local in-process delivery."""
+    return os.getenv("FORUM_WEBSOCKET_URL", "").strip().rstrip("/")

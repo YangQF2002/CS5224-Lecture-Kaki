@@ -161,11 +161,11 @@ Manual checks: use two app users in separate browser profiles against one API. V
 
 ## Troubleshooting
 
-| Symptom                               | Check                                                                             |
-| ------------------------------------- | --------------------------------------------------------------------------------- |
-| Lecture list unavailable              | Generated data; port 8001 server for Vite or `LECTURES_ORIGIN`.                   |
-| Redirect/CORS failure                 | Exact URLs, frontend API URL, Cognito callback/logout lists and API origins.      |
-| `401` after login                     | Matching Cognito client and a fresh access token.                                 |
-| Storage returns `503`                 | Table name/region, credentials and permissions; `/health` does not check storage. |
-| SDK profile error                     | Dev dependencies, selected profile and stale key overrides.                       |
-| History works but live delivery fails | One API instance/worker, WebSocket origin and API availability.                   |
+| Symptom                               | Check                                                                                                                         |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Lecture list unavailable              | Generated data; port 8001 server for Vite or `LECTURES_ORIGIN`.                                                               |
+| Redirect/CORS failure                 | Exact URLs, frontend API URL, Cognito callback/logout lists and API origins.                                                  |
+| `401` after login                     | Matching Cognito client and a fresh access token.                                                                             |
+| Storage returns `503`                 | Table name/region, credentials and permissions; `/health` does not check storage.                                             |
+| SDK profile error                     | Dev dependencies, selected profile and stale key overrides.                                                                   |
+| History works but live delivery fails | Local: one API process and the WebSocket origin. Deployed: `FORUM_WEBSOCKET_URL`, the live Lambda's logs and `CONN#` records. |

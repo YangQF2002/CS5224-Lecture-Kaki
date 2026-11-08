@@ -38,16 +38,13 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Select API revision
-        run: |
-          revision=$(git log -1 --format=%H -- backend)
-          test -n "$revision"
-          echo "TF_VAR_source_revision=$revision" >> "$GITHUB_ENV"
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.14"
       - name: Build ingestion package
         run: python backend/scripts/package_ingest.py
+      - name: Build API package
+        run: python backend/scripts/package_api.py
       - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
@@ -75,6 +72,7 @@ jobs:
           path: |
             infra/terraform/tfplan
             build/ingest.zip
+            build/api.zip
           retention-days: 1
           if-no-files-found: error
 
@@ -134,9 +132,9 @@ jobs:
           cat "$RUNNER_TEMP/ingest.json"
           if grep -q errorMessage "$RUNNER_TEMP/ingest.json"; then exit 1; fi
 
-      # A replaced server needs 5-10 minutes to build the API and obtain its certificate.
-      - name: Wait for the API
-        run: timeout 900 bash -c 'until curl -fsS "$API_URL/health"; do sleep 15; done'
+      # Lambda serves the new version as soon as apply finishes.
+      - name: Check the API
+        run: timeout 120 bash -c 'until curl -fsS "$API_URL/health"; do sleep 5; done'
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
