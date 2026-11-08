@@ -46,14 +46,46 @@ export function subscribeToRoom(
       const current = new WebSocket(forumSocketUrl(ticket.path))
       socket = current
       let ready = false
+      let acknowledged = false
+      let handshake: ReturnType<typeof setTimeout> | undefined
       const pending: RoomEvent[] = []
       current.onmessage = (message) => {
         if (stopped || socket !== current) return
         try {
-          const event = JSON.parse(String(message.data)) as RoomEvent
+          const event = JSON.parse(String(message.data)) as
+            RoomEvent | { type: 'ready'; room_id: string }
+          if (event.room_id === roomId && event.type === 'ready') {
+            if (acknowledged) return
+            acknowledged = true
+            clearTimeout(handshake)
+            void handlers
+              .onReady()
+              .then(() => {
+                if (
+                  stopped ||
+                  socket !== current ||
+                  current.readyState !== WebSocket.OPEN
+                )
+                  return
+                failures = 0
+                ready = true
+                pending.forEach(handlers.onEvent)
+                handlers.onStatus('connected')
+              })
+              .catch((error: unknown) => {
+                if (stopped || socket !== current) return
+                if (needsSignIn(error)) {
+                  stopped = true
+                  handlers.onUnauthorized()
+                }
+                current.close()
+              })
+            return
+          }
           if (
             event.room_id !== roomId ||
-            !['message.created', 'message.deleted'].includes(event.type)
+            (event.type !== 'message.created' &&
+              event.type !== 'message.deleted')
           )
             return
           if (event.type === 'message.created' && !event.message?.message_id)
@@ -72,6 +104,7 @@ export function subscribeToRoom(
       let rotate: ReturnType<typeof setTimeout> | undefined
       let ping: ReturnType<typeof setInterval> | undefined
       const clearTimers = () => {
+        clearTimeout(handshake)
         clearTimeout(rotate)
         clearInterval(ping)
       }
@@ -79,28 +112,8 @@ export function subscribeToRoom(
       clearConnectionTimers = clearTimers
       current.onopen = () => {
         if (stopped || socket !== current) return
-        void handlers
-          .onReady()
-          .then(() => {
-            if (
-              stopped ||
-              socket !== current ||
-              current.readyState !== WebSocket.OPEN
-            )
-              return
-            failures = 0
-            ready = true
-            pending.forEach(handlers.onEvent)
-            handlers.onStatus('connected')
-          })
-          .catch((error: unknown) => {
-            if (stopped || socket !== current) return
-            if (needsSignIn(error)) {
-              stopped = true
-              handlers.onUnauthorized()
-            }
-            current.close()
-          })
+        handshake = setTimeout(() => current.close(), 10_000)
+        current.send(JSON.stringify({ action: 'ready' }))
         // Rotate before the authenticated session expires; getToken refreshes it.
         rotate = setTimeout(
           () => {

@@ -1,6 +1,6 @@
 """Build the API Lambda ZIP (FastAPI app + locked Linux dependencies).
 
-The same package backs the HTTP API function and the WebSocket API function;
+The same package backs the HTTP, WebSocket connection and fan-out functions;
 they differ only by handler (see app/aws_lambda.py).
 """
 

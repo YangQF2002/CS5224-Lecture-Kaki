@@ -87,7 +87,6 @@ class RoomHub:
         self.rooms: dict[str, dict[WebSocket, int]] = {}
 
     async def join(self, room_id: str, socket: WebSocket, expires_at: int):
-        await socket.accept()
         self.rooms.setdefault(room_id, {})[socket] = expires_at
 
     def leave(self, room_id: str, socket: WebSocket):

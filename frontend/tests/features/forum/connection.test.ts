@@ -37,6 +37,11 @@ describe('sign-in', () => {
     })
     vi.stubEnv('VITE_COGNITO_DOMAIN', 'https://login.example')
     vi.stubEnv('VITE_COGNITO_CLIENT_ID', 'public-client')
+    vi.stubEnv(
+      'VITE_COGNITO_REDIRECT_URI',
+      'http://localhost:5173/auth/callback',
+    )
+    vi.stubEnv('VITE_COGNITO_LOGOUT_URI', 'http://localhost:5173/forum')
     fetcher.mockReset().mockResolvedValue({
       ok: true,
       json: async () => ({ access_token: 'new-token', expires_in: 900 }),
@@ -186,6 +191,21 @@ describe('live connection', () => {
     await vi.advanceTimersByTimeAsync(0)
     const socket = Socket.instances[0]
     socket.onopen?.()
+    expect(socket.send).toHaveBeenCalledWith(
+      JSON.stringify({ action: 'ready' }),
+    )
+    expect(h.onReady).not.toHaveBeenCalled()
+    socket.onmessage?.({
+      data: JSON.stringify({ type: 'ready', room_id: 'room-b' }),
+    })
+    expect(h.onReady).not.toHaveBeenCalled()
+    socket.onmessage?.({
+      data: JSON.stringify({ type: 'ready', room_id: 'room-a' }),
+    })
+    socket.onmessage?.({
+      data: JSON.stringify({ type: 'ready', room_id: 'room-a' }),
+    })
+    expect(h.onReady).toHaveBeenCalledOnce()
     for (const room_id of ['room-a', 'room-b']) {
       const event = { type: 'message.deleted', room_id, message_id: 'm1' }
       socket.onmessage?.({ data: JSON.stringify(event) })
@@ -201,6 +221,18 @@ describe('live connection', () => {
     })
     socket.close()
     await vi.advanceTimersByTimeAsync(1000)
+    expect(getConnectionTicket).toHaveBeenCalledTimes(2)
+    stop()
+  })
+  it('reconnects when readiness is not acknowledged instead of claiming connected', async () => {
+    const h = handlers()
+    const stop = subscribeToRoom('room-a', async () => 'token', h)
+    await vi.advanceTimersByTimeAsync(0)
+    Socket.instances[0].onopen?.()
+    await vi.advanceTimersByTimeAsync(11_000)
+    expect(Socket.instances[0].close).toHaveBeenCalledOnce()
+    expect(h.onReady).not.toHaveBeenCalled()
+    expect(h.onStatus).not.toHaveBeenCalledWith('connected')
     expect(getConnectionTicket).toHaveBeenCalledTimes(2)
     stop()
   })

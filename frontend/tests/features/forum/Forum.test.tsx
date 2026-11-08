@@ -208,6 +208,21 @@ it('returns to the selected room and draft after visiting Timetable', async () =
     (await screen.findByLabelText<HTMLTextAreaElement>('Your message')).value,
   ).toBe('My unsent question')
 })
+it('ignores duplicate broadcasts and late creates after a deletion', async () => {
+  renderForum()
+  await screen.findByText(own.content)
+  reply(own)
+  expect(screen.getAllByText(own.content)).toHaveLength(1)
+  act(() =>
+    receive({
+      type: 'message.deleted',
+      room_id: roomId,
+      message_id: own.message_id,
+    }),
+  )
+  reply(own)
+  expect(screen.queryByText(own.content)).toBeNull()
+})
 it('returns to the picker with its filters when that was the last Forum screen', async () => {
   renderForum()
   fireEvent.click(

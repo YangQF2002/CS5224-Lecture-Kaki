@@ -20,7 +20,7 @@ Terraform's `forum.tf` reads the existing PDF bucket and grants the API role acc
 
 PDF download links last at most 60 seconds and are capped by the message's 24-hour expiry. Deletion stops new links immediately and attempts to delete the pinned object version; an already-issued link can still work until it expires if physical deletion fails. A download started before expiry may finish afterward.
 
-The original partial Terraform apply also created two unused tables and a signup log group. Keep them until cleanup is agreed. Existing CloudFormation hosting/API/ingestion stacks can be retired after cutover; preserve the auth and data resources. The certificate disk is protected with `prevent_destroy`; teardown requires explicit review.
+Terraform also declares two unused tables and a signup log group from an earlier partial deployment; keep them until cleanup is agreed. The former Caddy certificate volume is outside Terraform management and can be deleted after verifying the Lambda deployment. Preserve the active auth and data resources listed above.
 
 ## Deploy infrastructure
 
@@ -46,9 +46,7 @@ terraform '-chdir=infra/terraform' apply tfplan
 $tf = terraform '-chdir=infra/terraform' output -json | ConvertFrom-Json
 ```
 
-The API is packaged from the checked-out `backend/app` into `build/api.zip` (Linux wheels, whatever machine builds it); one package backs the HTTP and WebSocket functions. Terraform updates the functions only when the package hash changes, and Lambda serves the new version for new requests without downtime. Open Forum sockets are held by API Gateway, so a release does not drop them. `api_url` (HTTP API) and `forum_websocket_url` (WebSocket API stage) are stable `execute-api` addresses. Check `Invoke-RestMethod "$($tf.api_url.value)/health"` returns `status: ok` before releasing the frontend.
-
-**First apply after the EC2 → Lambda change:** the plan destroys the EC2 instance, its Elastic IP, security group, instance profile and certificate-volume attachment, changes the API role to trust Lambda, and creates the two APIs and functions. A `removed` block in `api.tf` makes Terraform forget the protected Caddy certificate volume without deleting it; delete `lecture-kaki-<env>-caddy` in EC2 once the new API is verified. Deploy the frontend from the same commit right after apply, because the old frontend points at the destroyed Elastic IP.
+The API is packaged from the checked-out `backend/app` into `build/api.zip` (Linux wheels, whatever machine builds it); one package backs the HTTP, WebSocket connection and asynchronous fan-out functions. Terraform updates the functions when the package hash changes. API Gateway holds open sockets; `api_url` and `forum_websocket_url` are stable `execute-api` addresses. Check `Invoke-RestMethod "$($tf.api_url.value)/health"` returns `status: ok` before releasing the frontend. Release both from the same revision because the client and backend share the readiness handshake; reload existing browser tabs when first introducing it.
 
 For a new website address, update `CallbackURLs` and `LogoutURLs` in `lecture-kaki-auth-dev` to include `<website_url>/auth/callback` and `<website_url>/forum`. Preserve the existing domain and other URLs. Use a CloudFormation change set and confirm it modifies the client without replacing the user pool. Auth Lambda changes require packaging [`infra/auth.yaml`](../infra/auth.yaml) through the team's private artifact bucket before updating that stack.
 
@@ -89,11 +87,11 @@ Get-Content build/ingest-result.json
 
 Check for `FunctionError` and an `errorMessage` in the result. Scheduled ingestion runs Mondays at 03:00 Singapore time and publishes only in teaching Weeks 1–3 or on the first Monday of the month. Keep complete snapshots for rollback; restore a previous `lectures/current.json` with its matching snapshot path and `no-cache` header. Manage alarm email subscriptions separately in SNS and confirm the subscription email; keep personal addresses out of public plan artifacts.
 
-Verify discovery, direct links, login, timetable persistence after refresh and live Forum delivery between two users. Run another Terraform plan after applying; unexpected drift needs investigation.
+Verify discovery, direct links, login, timetable persistence after refresh and live Forum delivery between two users. A Forum connection should show connected only after readiness acknowledgement and history refresh; a saved message should succeed independently of delivery retries. Check the fan-out Lambda's logs and SNS failure alerts if history works but live events do not. Run another Terraform plan after applying; unexpected drift needs investigation.
 
 ## GitHub deployment workflow
 
-Complete this setup before merging [Terraform deploy](../.github/workflows/terraform-deploy.yml) into `main`, because merging triggers its first run. An AWS admin initializes and plans `infra/terraform/github/` with the same backend bucket, reviews and applies the saved plan, then reads `deploy_role_arn`. If GitHub's OIDC provider already exists, set `create_github_oidc_provider=false`. The role uses GitHub OIDC rather than stored AWS keys; it has broad account permissions and must only be available to trusted workflows.
+For initial [deployment workflow](../.github/workflows/terraform-deploy.yml) setup, an AWS admin initializes and plans `infra/terraform/github/` with the same backend bucket, reviews and applies the saved plan, then reads `deploy_role_arn`. If GitHub's OIDC provider already exists, set `create_github_oidc_provider=false`. The role uses GitHub OIDC rather than stored AWS keys and must only be available to trusted workflows.
 
 ```powershell
 terraform '-chdir=infra/terraform/github' init '-backend-config=bucket=lecturekaki-tfstate-320465872576'

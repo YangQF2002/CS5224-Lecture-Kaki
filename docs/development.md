@@ -34,7 +34,7 @@ Fill in the [backend](../backend/.env.example) and [frontend](../frontend/.env.e
 
 | Feature   | Backend setting / table schema                                                                  | Required table permissions                                                            |
 | --------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Forum     | `DYNAMODB_TABLE`; String `PK` + `SK`; TTL on `ttl`. Example: `lecturekaki-dev-forum`.           | `dynamodb:GetItem`, `dynamodb:PutItem`, `dynamodb:Query`, `dynamodb:DeleteItem`.      |
+| Forum     | `DYNAMODB_TABLE`; String `PK` + `SK`; TTL on `ttl`. Example: `lecturekaki-dev-forum`.           | `dynamodb:GetItem`, `dynamodb:PutItem`, `dynamodb:UpdateItem`, `dynamodb:Query`, `dynamodb:DeleteItem`. |
 | Timetable | `TIMETABLE_TABLE_NAME`; String partition key `user_id`; no TTL. Use the timetable stack output. | `dynamodb:GetItem`, `dynamodb:PutItem`, `dynamodb:DeleteItem`.                        |
 | Profile   | `PROFILE_TABLE_NAME`; String partition key `user_id`; no TTL. Created by `infra/terraform/`.    | `dynamodb:GetItem`, `dynamodb:PutItem`, `dynamodb:UpdateItem`, `dynamodb:DeleteItem`. |
 
@@ -47,6 +47,8 @@ The Cognito public client needs code flow, scope `openid` and these callback/log
 | API docs        | `http://localhost:8000/docs/oauth2-redirect` | `http://localhost:8000/docs`  |
 
 Use `localhost` consistently. Match frontend URLs and API `FRONTEND_ORIGINS` to the chosen ports. Restart API/Vite after environment changes; rebuild the Docker frontend.
+
+Leave `FORUM_WEBSOCKET_URL` and `FORUM_FANOUT_FUNCTION` empty locally; the API serves live connections in one process. PDF uploads also require S3 permissions described in [deployment](deployment.md#infrastructure-ownership).
 
 ## Native development
 
@@ -168,4 +170,4 @@ Manual checks: use two app users in separate browser profiles against one API. V
 | `401` after login                     | Matching Cognito client and a fresh access token.                                                                             |
 | Storage returns `503`                 | Table name/region, credentials and permissions; `/health` does not check storage.                                             |
 | SDK profile error                     | Dev dependencies, selected profile and stale key overrides.                                                                   |
-| History works but live delivery fails | Local: one API process and the WebSocket origin. Deployed: `FORUM_WEBSOCKET_URL`, the live Lambda's logs and `CONN#` records. |
+| History works but live delivery fails | Local: one API process and the WebSocket origin. Deployed: readiness acknowledgement, connection/fan-out logs and SNS alerts. |
