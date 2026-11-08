@@ -128,7 +128,9 @@ button.secondary:hover:not(:disabled),
   background: var(--soft);
   border-color: #c9cfc3;
 }
-:is(a, button, input, select, textarea, summary):focus-visible {
+:is(a, button, input, select, textarea, summary):focus-visible,
+/* Focus moved by a Tab we handle ourselves; Safari shows no ring for it. */
+[data-keyboard-focus] {
   outline: 2px solid var(--accent);
   outline-offset: 3px;
 }

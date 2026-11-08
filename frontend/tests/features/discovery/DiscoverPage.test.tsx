@@ -270,6 +270,61 @@ it('ticks the first search match on Enter, then closes on Enter', async () => {
   expect(screen.getByTestId('location').textContent).toBe('?buildings=COM1')
 })
 
+it('moves Tab from Faculties to Minimum class size, closing the list', async () => {
+  renderPage()
+  await screen.findByText('2 lectures in Week 11')
+
+  fireEvent.click(screen.getByText('Filters'))
+  const faculties = screen
+    .getByText('Faculties')
+    .closest<HTMLElement>('.multi-select-field')!
+  const details = faculties.querySelector('details')!
+  const summary = details.querySelector('summary')!
+  const classSize = screen.getByLabelText('Minimum class size')
+
+  summary.focus()
+  fireEvent.keyDown(summary, { key: 'Tab' })
+  expect(document.activeElement).toBe(classSize)
+
+  fireEvent.click(summary)
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+  const search = within(faculties).getByLabelText('Search faculties')
+  search.focus()
+  fireEvent.keyDown(search, { key: 'Tab' })
+  await act(() => new Promise((resolve) => setTimeout(resolve, 0)))
+  expect(document.activeElement).toBe(classSize)
+  expect(details.open).toBe(false)
+
+  summary.focus()
+  fireEvent.keyDown(summary, { key: 'Tab', shiftKey: true })
+  expect(document.activeElement).toBe(
+    screen
+      .getByText('Subject codes')
+      .closest('.multi-select-field')!
+      .querySelector('summary'),
+  )
+
+  // Levels are skipped: Tab goes on to the "Only my topics" row.
+  const myTopics = document.querySelector<HTMLElement>(
+    '.my-topics input:not(:disabled), .my-topics a',
+  )!
+  fireEvent.keyDown(classSize, { key: 'Tab' })
+  expect(document.activeElement).toBe(myTopics)
+
+  // Clicking a checkbox focuses it (Safari doesn't), so Shift+Tab starts
+  // there and steps back to Minimum class size.
+  const online = screen.getByLabelText('Include online lectures')
+  summary.focus()
+  fireEvent.click(online)
+  expect(document.activeElement).toBe(online)
+  fireEvent.keyDown(online, { key: 'Tab', shiftKey: true })
+  expect(document.activeElement).toBe(myTopics)
+  fireEvent.keyDown(myTopics, { key: 'Tab', shiftKey: true })
+  expect(document.activeElement).toBe(classSize)
+  fireEvent.keyDown(classSize, { key: 'Tab', shiftKey: true })
+  expect(document.activeElement).toBe(summary)
+})
+
 it('toggles days and clears filters while keeping the week', async () => {
   renderPage('/?q=biology')
   await screen.findByText('1 lecture in Week 11')

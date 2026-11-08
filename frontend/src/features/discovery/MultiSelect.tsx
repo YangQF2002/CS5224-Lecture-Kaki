@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { focusNeighbour } from '../../focusNeighbour.ts'
 
 export type MultiSelectOption = {
   value: string
@@ -206,6 +207,17 @@ function MultiSelect({
         className="multi-select"
         open={open}
         onToggle={(event) => setOpen(event.currentTarget.open)}
+        onKeyDown={(event) => {
+          if (event.key !== 'Tab' || event.altKey || event.metaKey) return
+          const root = event.currentTarget
+          const onSummary = (event.target as Element).matches('summary')
+          // Shift+Tab inside the open list steps back through it as usual.
+          if (event.shiftKey && !onSummary) return
+          if (!focusNeighbour(root, event.shiftKey)) return
+          event.preventDefault()
+          setOpen(false)
+          setActive(-1)
+        }}
       >
         <summary aria-labelledby={`${labelId} ${summaryId}`}>
           <span id={summaryId} className="multi-select-summary">

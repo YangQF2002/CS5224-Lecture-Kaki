@@ -175,6 +175,12 @@ button.clear-filters:hover {
   min-width: 0;
   padding-inline: 0.35rem;
 }
+/* Safari focuses the hour or minute inside a time input, so :focus-visible
+   never matches when Tab lands on it; ring it whenever it has focus. */
+.time-range input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 .filter-hint {
   margin: 0.5rem 0 0;
   color: var(--muted);
@@ -183,7 +189,9 @@ button.clear-filters:hover {
 }
 .multi-select-field {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.4rem;
+  min-width: 0;
 }
 .multi-select-label {
   font-size: var(--text-label);
@@ -220,9 +228,9 @@ button.clear-filters:hover {
   transform: translateY(0.12rem) rotate(225deg);
 }
 .multi-select-summary {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
 }
 .multi-select-body {
   position: absolute;
