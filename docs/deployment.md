@@ -6,15 +6,15 @@ Use PowerShell from the repository root in `ap-southeast-1`. Local setup is in [
 
 Terraform in [`infra/terraform`](../infra/terraform) manages the website, API and lecture ingestion. Its shared state is `s3://lecturekaki-tfstate-320465872576/lecture-kaki/terraform-dev.tfstate`, with versioning and S3 locking. The existing CloudFormation stacks retain ownership of Cognito and application data; Terraform reads the existing tables and uses the existing Cognito client. Do not import these resources into Terraform while CloudFormation still manages them.
 
-| Resource                              | Owner                                                                                   |
-| ------------------------------------- | --------------------------------------------------------------------------------------- |
-| Website, EC2 API, ingestion and alarm | `infra/terraform/`                                                                      |
-| Cognito pool/client/signup validation | `lecture-kaki-auth-dev`, [`infra/auth.yaml`](../infra/auth.yaml)                        |
-| Timetable table                       | `lecture-kaki-timetable-dev`, [`infra/timetable.yaml`](../infra/timetable.yaml)         |
-| Forum table                           | Existing retained `lecturekaki-dev-forum`                                               |
-| Forum PDF bucket `lecturekaki-forum`  | CloudFormation `lecture-kaki-forum-pdfs-dev`, [`infra/forum.yaml`](../infra/forum.yaml) |
-| Profile table (usernames, topics)     | `infra/terraform/`, `lecture-kaki-profiles-terraform-dev`                               |
-| GitHub OIDC and deployment role       | `infra/terraform/github/`, separate state                                               |
+| Resource                                  | Owner                                                                                   |
+| ----------------------------------------- | --------------------------------------------------------------------------------------- |
+| Website, Lambda API, ingestion and alarms | `infra/terraform/`                                                                      |
+| Cognito pool/client/signup validation     | `lecture-kaki-auth-dev`, [`infra/auth.yaml`](../infra/auth.yaml)                        |
+| Timetable table                           | `lecture-kaki-timetable-dev`, [`infra/timetable.yaml`](../infra/timetable.yaml)         |
+| Forum table                               | Existing retained `lecturekaki-dev-forum`                                               |
+| Forum PDF bucket `lecturekaki-forum`      | CloudFormation `lecture-kaki-forum-pdfs-dev`, [`infra/forum.yaml`](../infra/forum.yaml) |
+| Profile table (usernames, topics)         | `infra/terraform/`, `lecture-kaki-profiles-terraform-dev`                               |
+| GitHub OIDC and deployment role           | `infra/terraform/github/`, separate state                                               |
 
 Terraform's `forum.tf` reads the existing PDF bucket and grants the API role access to `uploads/*`; `api.tf` passes its name as `FORUM_ATTACHMENTS_BUCKET` and permits Forum upload-record updates. Keep the bucket's policy, versioning, encryption, cleanup and public-access blocks under CloudFormation. Before deploying PDF uploads to a new website origin, the stack owner must include that exact HTTPS origin in the Forum stack's `FrontendOrigins`, preserving existing origins. Downloads navigate directly to signed S3 links and do not require GET CORS.
 
@@ -35,10 +35,10 @@ Push-Location backend
 try {
     poetry run python scripts/package_ingest.py
     if ($LASTEXITCODE -ne 0) { throw 'Ingestion packaging failed.' }
+    poetry run python scripts/package_api.py
+    if ($LASTEXITCODE -ne 0) { throw 'API packaging failed.' }
 } finally { Pop-Location }
 terraform '-chdir=infra/terraform' init '-backend-config=bucket=lecturekaki-tfstate-320465872576'
-$env:TF_VAR_source_revision = git log -1 --format=%H -- backend
-if ($LASTEXITCODE -ne 0 -or $env:TF_VAR_source_revision -notmatch '^[a-f0-9]{40}$') { throw 'Could not select the API revision.' }
 terraform '-chdir=infra/terraform' plan '-out=tfplan'
 terraform '-chdir=infra/terraform' show tfplan
 # After reviewing replacements and deletions:
@@ -46,7 +46,9 @@ terraform '-chdir=infra/terraform' apply tfplan
 $tf = terraform '-chdir=infra/terraform' output -json | ConvertFrom-Json
 ```
 
-Deploy from a published commit; the selected API revision must exist in the public team repository. Both the commands above and the pipeline select the latest commit that changed `backend/`, so frontend and documentation changes do not replace the API. A changed API boot script replaces the instance and interrupts requests and live Forum connections while it starts. The Elastic IP preserves the API address; Caddy certificates and ACME account data persist on a separate encrypted EBS volume. Its mount is required before Docker starts. Wait for `Invoke-RestMethod "$($tf.api_url.value)/health"` to return `status: ok` before releasing the frontend.
+The API is packaged from the checked-out `backend/app` into `build/api.zip` (Linux wheels, whatever machine builds it); one package backs the HTTP and WebSocket functions. Terraform updates the functions only when the package hash changes, and Lambda serves the new version for new requests without downtime. Open Forum sockets are held by API Gateway, so a release does not drop them. `api_url` (HTTP API) and `forum_websocket_url` (WebSocket API stage) are stable `execute-api` addresses. Check `Invoke-RestMethod "$($tf.api_url.value)/health"` returns `status: ok` before releasing the frontend.
+
+**First apply after the EC2 → Lambda change:** the plan destroys the EC2 instance, its Elastic IP, security group, instance profile and certificate-volume attachment, changes the API role to trust Lambda, and creates the two APIs and functions. A `removed` block in `api.tf` makes Terraform forget the protected Caddy certificate volume without deleting it; delete `lecture-kaki-<env>-caddy` in EC2 once the new API is verified. Deploy the frontend from the same commit right after apply, because the old frontend points at the destroyed Elastic IP.
 
 For a new website address, update `CallbackURLs` and `LogoutURLs` in `lecture-kaki-auth-dev` to include `<website_url>/auth/callback` and `<website_url>/forum`. Preserve the existing domain and other URLs. Use a CloudFormation change set and confirm it modifies the client without replacing the user pool. Auth Lambda changes require packaging [`infra/auth.yaml`](../infra/auth.yaml) through the team's private artifact bucket before updating that stack.
 

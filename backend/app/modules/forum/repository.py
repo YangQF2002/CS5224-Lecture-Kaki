@@ -81,3 +81,76 @@ def delete_message(
         ConditionExpression="attribute_exists(PK) AND author_id = :uid",
         ExpressionAttributeValues={":uid": author_id},
     )
+
+
+# --- Live connections held by the API Gateway WebSocket API ---
+# A room item lists the room's connections for fan-out; a connection item lets
+# $disconnect, which only knows the connection ID, find its room.
+
+
+def _room_connection_key(room_id: str, connection_id: str) -> dict[str, str]:
+    return {"PK": f"ROOM#{room_id}", "SK": f"CONN#{connection_id}"}
+
+
+def _connection_key(connection_id: str) -> dict[str, str]:
+    return {"PK": f"CONN#{connection_id}", "SK": "METADATA"}
+
+
+def put_connection(
+    room_id: str,
+    connection_id: str,
+    user_id: str,
+    session_expires_at: int,
+    *,
+    table=None,
+) -> None:
+    # TTL cleans up after a missed $disconnect; fan-out also skips expired sessions.
+    _call(
+        "put_item",
+        table=table,
+        Item={
+            **_connection_key(connection_id),
+            "room_id": room_id,
+            "ttl": session_expires_at,
+        },
+    )
+    _call(
+        "put_item",
+        table=table,
+        Item={
+            **_room_connection_key(room_id, connection_id),
+            "connection_id": connection_id,
+            "user_id": user_id,
+            "session_expires_at": session_expires_at,
+            "ttl": session_expires_at,
+        },
+    )
+
+
+def delete_room_connection(room_id: str, connection_id: str, *, table=None) -> None:
+    _call("delete_item", table=table, Key=_room_connection_key(room_id, connection_id))
+    _call("delete_item", table=table, Key=_connection_key(connection_id))
+
+
+def delete_connection(connection_id: str, *, table=None) -> None:
+    item = _call(
+        "get_item", table=table, Key=_connection_key(connection_id), ConsistentRead=True
+    ).get("Item")
+    if item is None:
+        return
+    delete_room_connection(item["room_id"], connection_id, table=table)
+
+
+def query_connections(room_id: str, *, table=None) -> list[dict[str, Any]]:
+    kwargs: dict[str, Any] = {
+        "KeyConditionExpression": Key("PK").eq(f"ROOM#{room_id}")
+        & Key("SK").begins_with("CONN#"),
+        "ConsistentRead": True,
+    }
+    items: list[dict[str, Any]] = []
+    while True:
+        response = _call("query", table=table, **kwargs)
+        items.extend(response.get("Items", []))
+        if "LastEvaluatedKey" not in response:
+            return items
+        kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]

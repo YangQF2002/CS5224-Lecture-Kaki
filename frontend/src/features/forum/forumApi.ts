@@ -136,6 +136,8 @@ export async function getConnectionTicket(
 }
 
 export function forumSocketUrl(path: string): string {
+  // Deployed APIs return the full API Gateway WebSocket URL; local ones a path.
+  if (/^wss?:\/\//.test(path)) return path
   const url = new URL(`${API_BASE}${path}`, window.location.origin)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   return url.toString()

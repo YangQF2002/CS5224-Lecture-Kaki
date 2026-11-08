@@ -1,4 +1,9 @@
-"""Native WebSocket delivery for the shared FastAPI process (one worker in MVP)."""
+"""Connection tickets, plus in-process WebSocket delivery for local development.
+
+Deployed APIs deliver through the API Gateway WebSocket API (see gateway.py) so
+any number of API processes can publish. The in-memory RoomHub only reaches
+sockets held by its own process and is used when FORUM_WEBSOCKET_URL is unset.
+"""
 
 import asyncio
 import hashlib
@@ -12,6 +17,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from . import repository
 from .schemas import ConnectionTicket
+from .service import websocket_url
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +48,14 @@ def issue_ticket(
         )
     except (BotoCoreError, ClientError) as error:
         raise repository.ForumStorageUnavailable from error
+    gateway = websocket_url()
+    path = (
+        f"{gateway}?{urlencode({'room': room_id, 'ticket': ticket})}"
+        if gateway
+        else f"/rooms/{quote(room_id, safe='')}/live?{urlencode({'ticket': ticket})}"
+    )
     return ConnectionTicket(
-        path=f"/rooms/{quote(room_id, safe='')}/live?{urlencode({'ticket': ticket})}",
+        path=path,
         session_expires_at=session_expires_at,
     )
 
@@ -69,7 +81,7 @@ def consume_ticket(ticket: str, room_id: str) -> dict | None:
 
 
 class RoomHub:
-    """Connections live in memory. Run one worker/instance until a broker is added."""
+    """Local development only: sockets live in this process's memory."""
 
     def __init__(self):
         self.rooms: dict[str, dict[WebSocket, int]] = {}

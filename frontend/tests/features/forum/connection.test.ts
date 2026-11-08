@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // prettier-ignore
 import { completeSignIn, getAccessToken, SignInRequired, signOut, startPasswordChange, startSignIn, tryAutomaticSignIn } from '../../../src/features/forum/auth.ts'
 // prettier-ignore
-import { ForumApiError, getConnectionTicket, postMessage } from '../../../src/features/forum/forumApi.ts'
+import { ForumApiError, forumSocketUrl, getConnectionTicket, postMessage } from '../../../src/features/forum/forumApi.ts'
 import { downloadPdf, uploadPdf } from '../../../src/features/forum/forumPdf.ts'
 import { subscribeToRoom } from '../../../src/features/forum/forumSocket.ts'
 
@@ -383,5 +383,16 @@ describe('PDF downloads', () => {
       'AbortError',
     )
     expect(click).not.toHaveBeenCalled()
+  })
+})
+
+describe('live connection URL', () => {
+  it('uses the API Gateway WebSocket URL as given and resolves local paths against the API', () => {
+    const gateway =
+      'wss://abc.execute-api.ap-southeast-1.amazonaws.com/live?room=r&ticket=t'
+    expect(forumSocketUrl(gateway)).toBe(gateway)
+    expect(forumSocketUrl('/rooms/r/live?ticket=t')).toBe(
+      'ws://localhost:8000/rooms/r/live?ticket=t',
+    )
   })
 })

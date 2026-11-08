@@ -22,7 +22,7 @@ from fastapi.concurrency import run_in_threadpool
 from app.modules.auth import CurrentUser, get_current_user
 from app.modules.profile import username_for
 
-from . import attachment_store, attachments, realtime, repository
+from . import attachment_store, attachments, gateway, realtime, repository
 from .schemas import ConnectionTicket, MessageIn, MessageOut, MessagePage, RoomId
 from .service import (
     collect_page,
@@ -30,12 +30,21 @@ from .service import (
     frontend_origins,
     item_to_message,
     make_message,
+    websocket_url,
 )
 
 router = APIRouter(prefix="/rooms", tags=["Forum"])
 logger = logging.getLogger(__name__)
 
 _Auth = Annotated[CurrentUser, Depends(get_current_user)]
+
+
+async def _publish(room_id: str, event: dict) -> None:
+    # Deployed: API Gateway fan-out from any process. Local: this process's sockets.
+    if websocket_url():
+        await run_in_threadpool(gateway.publish, room_id, event)
+    else:
+        await realtime.hub.publish(room_id, event)
 
 
 @router.post("/{room_id:path}/messages", status_code=201)
@@ -64,7 +73,7 @@ async def post_message(
     else:
         await run_in_threadpool(repository.put_message, item)
     message = item_to_message(item)
-    await realtime.hub.publish(
+    await _publish(
         room_id, {"type": "message.created", "message": message.model_dump()}
     )
     return message
@@ -124,9 +133,7 @@ async def delete_message(
             # Race: deleted between our read and the conditional delete.
             raise HTTPException(status_code=404, detail="Message not found") from exc
         raise
-    await realtime.hub.publish(
-        room_id, {"type": "message.deleted", "message_id": message_id}
-    )
+    await _publish(room_id, {"type": "message.deleted", "message_id": message_id})
     if item.get("attachment"):
         try:
             await run_in_threadpool(attachment_store.delete_object, item["attachment"])
@@ -138,6 +145,7 @@ async def delete_message(
 
 @router.websocket("/{room_id:path}/live")
 async def live_messages(websocket: WebSocket, room_id: RoomId, ticket: str = ""):
+    # Deployed APIs hand out API Gateway URLs; this route serves local development.
     origin = websocket.headers.get("origin")
     if origin and origin.rstrip("/") not in frontend_origins():
         await websocket.close(code=1008)

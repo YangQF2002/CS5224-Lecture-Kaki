@@ -1,99 +1,42 @@
-# Single-instance API with HTTPS and WebSockets. Mirrors the team's lecture-kaki-api-host-dev stack:
-# Caddy serves HTTPS on the Elastic IP with a short-lived Let's Encrypt IP certificate.
-# The Forum's live room hub needs exactly one instance and one worker.
-
-variable "source_revision" {
-  type        = string
-  default     = "f19e13c3461dc07965a14b735f1fb095dc33fa4b"
-  description = "Full commit SHA of the public repository the API is built from."
-  validation {
-    condition     = can(regex("^[a-f0-9]{40}$", var.source_revision))
-    error_message = "Use a full 40-character commit SHA."
-  }
-}
-
-variable "api_instance_type" {
-  type    = string
-  default = "t3.micro"
-  validation {
-    condition     = contains(["t3.micro", "t3.small"], var.api_instance_type)
-    error_message = "Use t3.micro or t3.small."
-  }
-}
+# Serverless API: FastAPI on Lambda behind an API Gateway HTTP API, and Forum live
+# updates through an API Gateway WebSocket API. Nothing keeps per-process state:
+# API Gateway holds the open sockets and DynamoDB records which connections are in
+# which room, so every Lambda invocation can serve any request or broadcast.
+# Build the package first: python3.14 backend/scripts/package_api.py (writes build/api.zip).
 
 locals {
-  api_url = "https://${aws_eip.api.public_ip}"
+  api_function_name  = "lecturekaki-${var.env}-api"
+  live_function_name = "lecturekaki-${var.env}-forum-live"
+  api_zip            = "${path.module}/../../build/api.zip"
+  api_url            = aws_apigatewayv2_api.http.api_endpoint
+  forum_websocket    = "${aws_apigatewayv2_api.live.api_endpoint}/${aws_apigatewayv2_stage.live.name}"
+  # Fan-out and $default call back into the WebSocket API's management endpoint.
+  manage_connections = "${aws_apigatewayv2_api.live.execution_arn}/${aws_apigatewayv2_stage.live.name}/POST/@connections/*"
+  delete_connections = "${aws_apigatewayv2_api.live.execution_arn}/${aws_apigatewayv2_stage.live.name}/DELETE/@connections/*"
 }
 
-# --- Network placement ---
-
-data "aws_vpc" "default" {
-  default = true
-}
-
-data "aws_subnets" "default" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
+# The EC2 server and Caddy are replaced. Keep the certificate volume (it is
+# protected) but stop managing it; delete it by hand once the cutover is verified.
+removed {
+  from = aws_ebs_volume.caddy
+  lifecycle {
+    destroy = false
   }
-  filter {
-    name   = "default-for-az"
-    values = ["true"]
-  }
 }
 
-# Latest Amazon Linux 2023 for x86; ignored after launch so a newer image never replaces the server.
-data "aws_ssm_parameter" "al2023" {
-  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
-}
+# --- Identity ---
 
-# 80 for certificate validation and redirects, 443 for the API. Administration uses Session Manager.
-resource "aws_security_group" "api" {
-  name        = "lecture-kaki-${var.env}-api"
-  description = "HTTPS and certificate validation for the API"
-  vpc_id      = data.aws_vpc.default.id
-}
-
-resource "aws_vpc_security_group_ingress_rule" "api_http" {
-  security_group_id = aws_security_group.api.id
-  cidr_ipv4         = "0.0.0.0/0"
-  ip_protocol       = "tcp"
-  from_port         = 80
-  to_port           = 80
-}
-
-resource "aws_vpc_security_group_ingress_rule" "api_https" {
-  security_group_id = aws_security_group.api.id
-  cidr_ipv4         = "0.0.0.0/0"
-  ip_protocol       = "tcp"
-  from_port         = 443
-  to_port           = 443
-}
-
-# The server downloads code, packages and certificates.
-resource "aws_vpc_security_group_egress_rule" "api_all" {
-  security_group_id = aws_security_group.api.id
-  cidr_ipv4         = "0.0.0.0/0"
-  ip_protocol       = "-1"
-}
-
-# --- Server identity: table access and Session Manager ---
-
+# HTTP API function: tables, Forum PDFs (forum.tf) and live fan-out.
 resource "aws_iam_role" "api" {
   name = "lecture-kaki-${var.env}-api"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
       Effect    = "Allow"
-      Principal = { Service = "ec2.amazonaws.com" }
+      Principal = { Service = "lambda.amazonaws.com" }
       Action    = "sts:AssumeRole"
     }]
   })
-}
-
-resource "aws_iam_role_policy_attachment" "api_ssm" {
-  role       = aws_iam_role.api.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
 resource "aws_iam_role_policy" "api_tables" {
@@ -124,124 +67,224 @@ resource "aws_iam_role_policy" "api_tables" {
         Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem"]
         Resource = aws_dynamodb_table.profile.arn
       },
+      {
+        Effect   = "Allow"
+        Action   = "execute-api:ManageConnections"
+        Resource = [local.manage_connections, local.delete_connections]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "${aws_cloudwatch_log_group.api.arn}:*"
+      },
     ]
   })
 }
 
-resource "aws_iam_instance_profile" "api" {
-  name = "lecture-kaki-${var.env}-api"
-  role = aws_iam_role.api.name
+# WebSocket function: tickets and connection records only.
+resource "aws_iam_role" "live" {
+  name = "lecture-kaki-${var.env}-forum-live"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
 }
 
-# --- The server ---
-
-resource "aws_eip" "api" {
-  domain = "vpc"
-  tags   = { Name = "lecture-kaki-api-${var.env}" }
+resource "aws_iam_role_policy" "live" {
+  name = "forum-live"
+  role = aws_iam_role.live.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem"]
+        Resource = data.aws_dynamodb_table.existing_forum.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = "execute-api:ManageConnections"
+        Resource = local.delete_connections
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "${aws_cloudwatch_log_group.live.arn}:*"
+      },
+    ]
+  })
 }
 
-resource "aws_instance" "api" {
-  ami                    = data.aws_ssm_parameter.al2023.insecure_value
-  instance_type          = var.api_instance_type
-  subnet_id              = data.aws_subnets.default.ids[0]
-  vpc_security_group_ids = [aws_security_group.api.id]
-  iam_instance_profile   = aws_iam_instance_profile.api.name
+# --- Functions (one package, two handlers) ---
 
-  # The API container reaches the role's credentials through one extra network hop.
-  metadata_options {
-    http_tokens                 = "required"
-    http_put_response_hop_limit = 2
-  }
+resource "aws_cloudwatch_log_group" "api" {
+  name              = "/aws/lambda/${local.api_function_name}"
+  retention_in_days = 30
+}
 
-  root_block_device {
-    volume_size           = 20
-    volume_type           = "gp3"
-    encrypted             = true
-    delete_on_termination = true
-  }
+resource "aws_cloudwatch_log_group" "live" {
+  name              = "/aws/lambda/${local.live_function_name}"
+  retention_in_days = 30
+}
 
-  # First-boot script; it never re-runs, so any change to it builds a fresh server.
-  user_data_replace_on_change = true
-  user_data                   = <<-EOT
-    #!/bin/bash
-    set -euxo pipefail
-    dnf install -y docker git e2fsprogs
-    # Attachment follows instance creation; identify the disk by EBS ID, not NVMe order.
-    CERT_DEVICE=''
-    for attempt in $(seq 1 120); do
-      CERT_DEVICE=$(lsblk -dnpo NAME,SERIAL | awk '$2 == "${replace(aws_ebs_volume.caddy.id, "-", "")}" {print $1}')
-      if test -b "$CERT_DEVICE"; then break; fi
-      sleep 5
-    done
-    test -b "$CERT_DEVICE"
-    if ! blkid "$CERT_DEVICE" >/dev/null; then
-      test -z "$(wipefs --noheadings "$CERT_DEVICE")"
-      mkfs.ext4 "$CERT_DEVICE"
-    fi
-    test "$(blkid -s TYPE -o value "$CERT_DEVICE")" = ext4
-    mkdir -p /var/lib/lecture-kaki-caddy
-    CERT_UUID=$(blkid -s UUID -o value "$CERT_DEVICE")
-    printf 'UUID=%s /var/lib/lecture-kaki-caddy ext4 defaults,nofail,x-systemd.device-timeout=300 0 2\n' "$CERT_UUID" >> /etc/fstab
-    mount /var/lib/lecture-kaki-caddy
-    chmod 700 /var/lib/lecture-kaki-caddy
-    # Keep Docker stopped if certificate storage is missing after a reboot.
-    mkdir -p /etc/systemd/system/docker.service.d
-    cat > /etc/systemd/system/docker.service.d/caddy-storage.conf <<'EOF'
-    [Unit]
-    RequiresMountsFor=/var/lib/lecture-kaki-caddy
-    [Service]
-    ExecStartPre=/usr/bin/mountpoint -q /var/lib/lecture-kaki-caddy
-    EOF
-    systemctl daemon-reload
-    systemctl enable --now docker
-    # Swap lets the 1 GB instance finish the image build.
-    fallocate -l 2G /swapfile
-    chmod 600 /swapfile
-    mkswap /swapfile
-    swapon /swapfile
-    echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
-    mkdir -p /opt/lecture-kaki
-    curl --fail --location --retry 5 'https://github.com/YangQF2002/CS5224-Lecture-Kaki/archive/${var.source_revision}.tar.gz' -o /tmp/source.tar.gz
-    tar -xzf /tmp/source.tar.gz -C /opt/lecture-kaki --strip-components=1
-    docker build -t lecture-kaki-api:${var.source_revision} /opt/lecture-kaki/backend
-    cat > /opt/lecture-kaki/api.env <<'EOF'
-    AWS_REGION=ap-southeast-1
-    COGNITO_USER_POOL_ID=${var.existing_cognito_user_pool_id}
-    COGNITO_CLIENT_ID=${var.existing_cognito_client_id}
-    COGNITO_DOMAIN=${var.existing_cognito_domain}
-    DYNAMODB_TABLE=${data.aws_dynamodb_table.existing_forum.name}
-    TIMETABLE_TABLE_NAME=${data.aws_dynamodb_table.existing_timetable.name}
-    PROFILE_TABLE_NAME=${aws_dynamodb_table.profile.name}
-    FORUM_ATTACHMENTS_BUCKET=${data.aws_s3_bucket.forum_pdfs.bucket}
-    FRONTEND_ORIGINS=${local.website_url}
-    EOF
-    chmod 600 /opt/lecture-kaki/api.env
-    cat > /opt/lecture-kaki/Caddyfile <<'EOF'
-    {
-      default_sni ${aws_eip.api.public_ip}
+resource "aws_lambda_function" "api" {
+  function_name    = local.api_function_name
+  description      = "LectureKaki FastAPI behind the HTTP API"
+  filename         = local.api_zip
+  source_code_hash = filebase64sha256(local.api_zip)
+  handler          = "app.aws_lambda.http_handler"
+  runtime          = "python3.14"
+  architectures    = ["x86_64"]
+  role             = aws_iam_role.api.arn
+  # The HTTP API waits at most 30 seconds for an integration.
+  timeout     = 29
+  memory_size = 1024
+
+  environment {
+    variables = {
+      COGNITO_USER_POOL_ID     = var.existing_cognito_user_pool_id
+      COGNITO_CLIENT_ID        = var.existing_cognito_client_id
+      COGNITO_DOMAIN           = var.existing_cognito_domain
+      DYNAMODB_TABLE           = data.aws_dynamodb_table.existing_forum.name
+      TIMETABLE_TABLE_NAME     = data.aws_dynamodb_table.existing_timetable.name
+      PROFILE_TABLE_NAME       = aws_dynamodb_table.profile.name
+      FORUM_ATTACHMENTS_BUCKET = data.aws_s3_bucket.forum_pdfs.bucket
+      FORUM_WEBSOCKET_URL      = local.forum_websocket
+      FRONTEND_ORIGINS         = local.website_url
     }
-    ${aws_eip.api.public_ip} {
-      tls {
-        issuer acme {
-          profile shortlived
-        }
-      }
-      reverse_proxy 127.0.0.1:8000
-    }
-    EOF
-    docker run -d --name lecture-kaki-api --restart unless-stopped --network host --env-file /opt/lecture-kaki/api.env lecture-kaki-api:${var.source_revision} uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-proxy-headers --workers 1
-    docker run -d --name lecture-kaki-caddy --restart unless-stopped --network host -v /opt/lecture-kaki/Caddyfile:/etc/caddy/Caddyfile:ro -v /var/lib/lecture-kaki-caddy:/data -v lecture-kaki-caddy-config:/config caddy:2.11.4@sha256:0c994536bddb66445885237f1a5dcc1916bccea922661c76b4e9fc24061f9b52
-  EOT
-
-  # A newer Amazon Linux image must not replace a running server.
-  lifecycle {
-    ignore_changes = [ami]
   }
 
-  tags = { Name = "lecture-kaki-api-${var.env}" }
+  logging_config {
+    log_format = "Text"
+    log_group  = aws_cloudwatch_log_group.api.name
+  }
 }
 
-resource "aws_eip_association" "api" {
-  allocation_id = aws_eip.api.id
-  instance_id   = aws_instance.api.id
+resource "aws_lambda_function" "live" {
+  function_name    = local.live_function_name
+  description      = "Forum WebSocket connect, disconnect and ping"
+  filename         = local.api_zip
+  source_code_hash = filebase64sha256(local.api_zip)
+  handler          = "app.aws_lambda.websocket_handler"
+  runtime          = "python3.14"
+  architectures    = ["x86_64"]
+  role             = aws_iam_role.live.arn
+  timeout          = 10
+  memory_size      = 512
+
+  environment {
+    variables = {
+      DYNAMODB_TABLE   = data.aws_dynamodb_table.existing_forum.name
+      FRONTEND_ORIGINS = local.website_url
+    }
+  }
+
+  logging_config {
+    log_format = "Text"
+    log_group  = aws_cloudwatch_log_group.live.name
+  }
+}
+
+# --- HTTP API: every request invokes the FastAPI function ---
+
+resource "aws_apigatewayv2_api" "http" {
+  name          = "lecturekaki-${var.env}-api"
+  protocol_type = "HTTP"
+  # CORS stays in FastAPI, so preflight requests reach the function too.
+}
+
+resource "aws_apigatewayv2_integration" "http" {
+  api_id                 = aws_apigatewayv2_api.http.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.api.invoke_arn
+  payload_format_version = "2.0"
+  timeout_milliseconds   = 30000
+}
+
+resource "aws_apigatewayv2_route" "http" {
+  api_id    = aws_apigatewayv2_api.http.id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.http.id}"
+}
+
+resource "aws_apigatewayv2_stage" "http" {
+  api_id      = aws_apigatewayv2_api.http.id
+  name        = "$default"
+  auto_deploy = true
+
+  default_route_settings {
+    throttling_burst_limit = 200
+    throttling_rate_limit  = 100
+  }
+}
+
+resource "aws_lambda_permission" "http" {
+  statement_id  = "AllowHttpApi"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.api.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/*/*"
+}
+
+# --- WebSocket API: API Gateway holds the sockets ---
+
+resource "aws_apigatewayv2_api" "live" {
+  name                       = "lecturekaki-${var.env}-forum-live"
+  protocol_type              = "WEBSOCKET"
+  route_selection_expression = "$request.body.action"
+}
+
+resource "aws_apigatewayv2_integration" "live" {
+  api_id           = aws_apigatewayv2_api.live.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = aws_lambda_function.live.invoke_arn
+}
+
+# $connect checks the ticket, $disconnect removes the record, $default answers pings.
+resource "aws_apigatewayv2_route" "live" {
+  for_each  = toset(["$connect", "$disconnect", "$default"])
+  api_id    = aws_apigatewayv2_api.live.id
+  route_key = each.value
+  target    = "integrations/${aws_apigatewayv2_integration.live.id}"
+}
+
+resource "aws_apigatewayv2_stage" "live" {
+  api_id      = aws_apigatewayv2_api.live.id
+  name        = "live"
+  auto_deploy = true
+
+  default_route_settings {
+    throttling_burst_limit = 200
+    throttling_rate_limit  = 100
+  }
+}
+
+resource "aws_lambda_permission" "live" {
+  statement_id  = "AllowWebSocketApi"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.live.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.live.execution_arn}/*/*"
+}
+
+# --- Alerts ---
+
+resource "aws_cloudwatch_metric_alarm" "api_errors" {
+  for_each            = { api = aws_lambda_function.api.function_name, live = aws_lambda_function.live.function_name }
+  alarm_name          = "${each.value}-errors"
+  alarm_description   = "API Lambda errors; check the function logs."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Errors"
+  dimensions          = { FunctionName = each.value }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 5
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
 }
