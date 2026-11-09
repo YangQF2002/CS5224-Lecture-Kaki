@@ -5,7 +5,12 @@ import { focusClickedField, focusNeighbour } from '../../focusNeighbour.ts'
 import Icon from '../../Icon.tsx'
 import DiscoveryHeader from './DiscoveryHeader.tsx'
 import DiscoveryRail from './DiscoveryRail.tsx'
-import { parseRoomId, roomIdFor, roomPath } from '../forum/roomCatalogue.ts'
+import {
+  parseRoomId,
+  roomIdFor,
+  roomPath,
+  weekIsOpen,
+} from '../forum/roomCatalogue.ts'
 import { SignInRequired, getAccessToken } from '../forum/auth.ts'
 import { getProfile, loadLocalTopics } from '../profile/profileApi.ts'
 import { fetchModule } from '../timetable/nusmodsApi.ts'
@@ -137,7 +142,13 @@ function DiscoverPage() {
     }
   }, [])
 
-  const weeks = useMemo(() => snapshot?.index.weeks ?? [], [snapshot])
+  // Past weeks are closed, as in the Forum, so only this week and later are listed.
+  const weeks = useMemo(
+    () =>
+      snapshot?.index.weeks.filter((week) => weekIsOpen(week.endDate, today)) ??
+      [],
+    [snapshot, today],
+  )
   const selectedWeek =
     weeks.find((week) => week.week === filters.week) ??
     weeks.find((week) => week.week === chooseDefaultWeek(weeks, today))
@@ -516,7 +527,9 @@ function DiscoverPage() {
         <DiscoveryHeader />
         <p className="discovery-loading" role="status">
           {snapshot
-            ? 'No lectures have been published yet.'
+            ? snapshot.index.weeks.length
+              ? 'This term’s lectures have ended. Next term’s lectures appear once their list is published.'
+              : 'No lectures have been published yet.'
             : 'Finding your next favourite lecture…'}
         </p>
       </main>

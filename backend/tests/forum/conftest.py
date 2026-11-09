@@ -112,7 +112,7 @@ def pdf(client, auth, monkeypatch):
     bucket.put_bucket_versioning(
         Bucket="forum-pdfs-test", VersioningConfiguration={"Status": "Enabled"}
     )
-    room = "QT5101-LEC-1@2026-10-20-1600-CQT/SR0514@2026-2027@1"
+    room = "QT5101-LEC-1@2030-10-22-1600-CQT/SR0514@2026-2027@1"
     base = f"/rooms/{quote(room, safe='')}"
     writer = PdfWriter()
     writer.add_blank_page(width=200, height=200)

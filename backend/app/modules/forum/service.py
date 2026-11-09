@@ -1,17 +1,40 @@
-"""Forum business rules: message creation, expiry, pagination."""
+"""Forum business rules: room access, message creation, expiry, pagination."""
 
 import base64
 import json
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta, timezone
 from uuid import uuid4
 
 from . import repository
 from .schemas import MessageOut
 
-_EXPIRY_HOURS = 24
+SINGAPORE = timezone(timedelta(hours=8))
 _PK_PREFIX = "ROOM#"
 _SK_PREFIX = "MSG#"
+
+
+def room_closes_at(room_id: str) -> datetime:
+    """When a lecture's discussion closes: the end of its Monday-to-Sunday week.
+
+    The room ID carries the lecture date in Singapore time. Its messages expire
+    at this moment, so access and disposal follow the same rule.
+    """
+    lecture_day = date.fromisoformat(room_id.split("@")[1][:10])
+    next_monday = lecture_day + timedelta(days=7 - lecture_day.weekday())
+    return datetime.combine(next_monday, time(0), SINGAPORE).astimezone(UTC)
+
+
+def pdf_folder(room_id: str) -> str:
+    """S3 folder for a room's PDFs: its closing date, removed by the weekly cleanup."""
+    return room_closes_at(room_id).astimezone(SINGAPORE).date().isoformat()
+
+
+def room_is_open(room_id: str) -> bool:
+    return datetime.now(UTC) < room_closes_at(room_id)
+
+
+ROOM_CLOSED = "This lecture's discussion closed at the end of its week"
 
 
 def make_message(
@@ -19,12 +42,11 @@ def make_message(
 ) -> dict:
     """Build a DynamoDB item for a new message.
 
-    All time values are derived from a single server timestamp. The author's
-    username is stored as it was when posting; messages expire within a day,
-    so a renamed user's new name soon replaces the old one.
+    Every message in a room expires when the room closes. The author's
+    username is stored as it was when posting.
     """
     now = datetime.now(UTC)
-    expires = now + timedelta(hours=_EXPIRY_HOURS)
+    expires = room_closes_at(room_id)
     # SK is zero-padded milliseconds + UUID so items sort by insertion time.
     ts_ms = int(now.timestamp() * 1000)
     message_id = f"{ts_ms:020d}-{uuid4().hex}"
@@ -103,16 +125,15 @@ def collect_page(
     *,
     table=None,
 ) -> tuple[list[MessageOut], str | None]:
-    """Read one bounded page within the message access window.
+    """Read one bounded page of an open room's messages.
 
-    A page may be partial or empty after expiry filtering; its cursor still
-    allows the caller to continue without an unbounded server-side refill.
+    A closed room has no readable messages. A page may be partial or empty
+    after expiry filtering (older rows may carry an earlier expiry); its cursor
+    still allows the caller to continue without an unbounded server-side refill.
     """
-    cutoff = datetime.now(UTC) - timedelta(hours=_EXPIRY_HOURS)
-    oldest_key = f"{_SK_PREFIX}{int(cutoff.timestamp() * 1000):020d}"
-    # A cursor can age out between requests. There are then no older live rows.
-    if start_key and not oldest_key <= start_key["SK"] <= "MSG#~":
+    if not room_is_open(room_id):
         return [], None
+    oldest_key = _SK_PREFIX
     response = repository.query_messages(
         room_id, limit, start_key, oldest_key=oldest_key, table=table
     )

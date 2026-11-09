@@ -12,7 +12,7 @@ import { loadTimetable } from '../timetable/timetableStorage.ts'
 import type { Semester, TimetableBook } from '../timetable/types.ts'
 import { getAccessToken } from './auth.ts'
 // prettier-ignore
-import { lectureDate, lectureTime, parseRoomId, roomIdFor, roomPath } from './roomCatalogue.ts'
+import { lectureDate, lectureTime, parseRoomId, roomIdFor, roomPath, weekIsOpen } from './roomCatalogue.ts'
 import { lastForumPath, lastRoom, rememberPicker } from './roomSession.ts'
 import ForumLayout from './ForumLayout.tsx'
 import './forum.css'
@@ -36,13 +36,17 @@ function LecturePicker() {
   const [accountTimetable, setAccountTimetable] =
     useState<TimetableBook | null>(null)
   const query = params.get('q') ?? ''
+  // Past weeks' discussions are closed, so only this week and later are listed.
+  const [today] = useState(() => singaporeNow().date)
+  const openWeeks = useMemo(
+    () =>
+      snapshot?.index.weeks.filter((week) => weekIsOpen(week.endDate, today)) ??
+      [],
+    [snapshot, today],
+  )
   const selectedWeek =
-    snapshot?.index.weeks.find((week) => week.week === params.get('week')) ??
-    snapshot?.index.weeks.find(
-      (week) =>
-        week.week ===
-        chooseDefaultWeek(snapshot.index.weeks, singaporeNow().date),
-    )
+    openWeeks.find((week) => week.week === params.get('week')) ??
+    openWeeks.find((week) => week.week === chooseDefaultWeek(openWeeks, today))
 
   useEffect(() => {
     let cancelled = false
@@ -165,8 +169,9 @@ function LecturePicker() {
         <p className="eyebrow">Better with a kaki</p>
         <h1>Lecture Forum</h1>
         <p>
-          New lecture, familiar faces. Choose a lecture to find your kaki.
-          Messages disappear after 24 hours.
+          New lecture, familiar faces. Choose a lecture to find your kaki. Each
+          discussion closes, and its messages disappear, when the lecture’s week
+          ends.
         </p>
         {snapshot && (
           <p className="forum-term">
@@ -196,11 +201,11 @@ function LecturePicker() {
           <SelectField
             value={selectedWeek?.week ?? 'none'}
             onValueChange={(value) => update('week', value)}
-            disabled={!snapshot?.index.weeks.length}
+            disabled={!openWeeks.length}
             aria-label="Week"
             options={
-              snapshot?.index.weeks.length
-                ? snapshot.index.weeks.map((week) => ({
+              openWeeks.length
+                ? openWeeks.map((week) => ({
                     value: week.week,
                     label: `${weekName(week.week)} · ${lectureDate(week.startDate)}`,
                   }))
@@ -230,7 +235,11 @@ function LecturePicker() {
       ) : !snapshot || (!sessions && selectedWeek) ? (
         <p role="status">Loading lectures…</p>
       ) : !selectedWeek ? (
-        <p>No lectures are available for this term.</p>
+        <p>
+          {snapshot.index.weeks.length
+            ? 'All of this term’s discussions have closed. Next term’s lectures appear once their list is published.'
+            : 'No lectures are available for this term.'}
+        </p>
       ) : sessions?.length === 0 ? (
         <p>
           No lectures match this search in {weekName(selectedWeek.week)}. Try

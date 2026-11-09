@@ -153,7 +153,7 @@ resource "aws_lambda_function" "api" {
       DYNAMODB_TABLE           = data.aws_dynamodb_table.existing_forum.name
       TIMETABLE_TABLE_NAME     = data.aws_dynamodb_table.existing_timetable.name
       PROFILE_TABLE_NAME       = aws_dynamodb_table.profile.name
-      FORUM_ATTACHMENTS_BUCKET = data.aws_s3_bucket.forum_pdfs.bucket
+      FORUM_ATTACHMENTS_BUCKET = aws_s3_bucket.forum_pdfs.bucket
       FORUM_WEBSOCKET_URL      = local.forum_websocket
       FORUM_FANOUT_FUNCTION    = aws_lambda_function.fanout.function_name
       FRONTEND_ORIGINS         = local.website_url

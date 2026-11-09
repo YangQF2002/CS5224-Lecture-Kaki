@@ -10,7 +10,7 @@ from botocore.exceptions import ClientError
 
 from app.modules.forum import delivery, gateway
 
-ROOM = "BT1101-LEC-1@2026-10-20-0800-LT11@2026-2027@1"
+ROOM = "BT1101-LEC-1@2030-10-22-0800-LT11@2026-2027@1"
 MESSAGES = f"/rooms/{quote(ROOM, safe='')}/messages"
 WS_URL = "wss://example.execute-api.ap-southeast-1.amazonaws.com/live"
 

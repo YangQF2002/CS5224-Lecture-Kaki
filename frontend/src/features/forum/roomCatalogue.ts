@@ -1,5 +1,6 @@
 // prettier-ignore
 import { fetchLectureSnapshot, fetchWeekSessions } from '../discovery/lectureApi.ts'
+import { singaporeNow } from '../discovery/discoveryFilters.ts'
 import type { LecturePointer, LectureSession } from '../discovery/types.ts'
 
 const ROOM_PATTERN =
@@ -49,6 +50,31 @@ export function roomFromLink(value: string): string | null {
   return parseRoomId(id)?.id ?? null
 }
 
+// A lecture's discussion closes when its Monday-to-Sunday week ends (Singapore
+// time); its messages expire then too. The API applies the same rule.
+function weekEnd(date: string): string {
+  const day = new Date(`${date}T00:00:00Z`)
+  day.setUTCDate(day.getUTCDate() + ((7 - day.getUTCDay()) % 7))
+  return day.toISOString().slice(0, 10)
+}
+
+export function roomClosesAt(date: string): number {
+  const monday = new Date(`${weekEnd(date)}T00:00:00+08:00`)
+  return monday.getTime() + 24 * 60 * 60 * 1000
+}
+
+// Week ranges from the lecture index end on Sunday.
+export function weekIsOpen(endDate: string, today = singaporeNow().date) {
+  return endDate >= today
+}
+
+export function roomIsOpen(date: string, today = singaporeNow().date) {
+  return weekIsOpen(weekEnd(date), today)
+}
+
+export const ROOM_CLOSED =
+  'This lecture’s discussion closed at the end of its week. Choose a lecture from this week or later.'
+
 export class RoomNotFound extends Error {}
 export type LectureRoom = {
   id: string
@@ -75,6 +101,7 @@ export async function resolveRoom(id: string): Promise<LectureRoom> {
   )
   if (!week)
     throw new RoomNotFound('This lecture is not in the current lecture list.')
+  if (!roomIsOpen(parsed.date)) throw new RoomNotFound(ROOM_CLOSED)
   const data = await fetchWeekSessions(snapshot.pointer, week.week)
   const session = data.sessions.find(
     (session) => session.id === parsed.sessionId,

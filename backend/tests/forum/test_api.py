@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from io import BytesIO
+from unittest.mock import Mock
 from urllib.parse import quote, urlparse
 
 import pytest
@@ -12,8 +13,8 @@ from pypdf.generic import NameObject, NumberObject
 from app.modules.forum import attachment_store as store
 from app.modules.forum.service import make_message
 
-ROOM = "BT1101-LEC-1@2026-10-20-0800-LT11@2026-2027@1"
-SLASH_ROOM = "QT5101-LEC-1@2026-10-20-1600-CQT/SR0514@2026-2027@1"
+ROOM = "BT1101-LEC-1@2030-10-22-0800-LT11@2026-2027@1"
+SLASH_ROOM = "QT5101-LEC-1@2030-10-22-1600-CQT/SR0514@2026-2027@1"
 
 
 def path(room=ROOM):
@@ -55,7 +56,7 @@ def test_invalid_message_rejected(client, auth, content):
 
 
 @pytest.mark.parametrize(
-    "room", ["invalid-room", ROOM.replace("2026-10-20", "2026-02-30")]
+    "room", ["invalid-room", ROOM.replace("2030-10-22", "2026-02-30")]
 )
 def test_invalid_room_rejected(client, auth, room):
     assert client.get(path(room), headers=auth()).status_code == 422
@@ -279,38 +280,41 @@ def test_unsupported_pdf_encryption_returns_validation_error(
     assert client.get(f"{pdf.base}/messages", headers=auth()).json()["items"] == []
 
 
-def test_history_skips_old_keys_and_expired_cursors(client, auth, table, monkeypatch):
-    from app.modules.forum.service import encode_cursor
+def test_room_closes_at_the_end_of_its_lecture_week():
+    from app.modules.forum.service import room_closes_at
 
-    old = datetime.now(UTC) - timedelta(days=2)
-    for index in range(120):
-        item = make_message(ROOM, "expired", "student-a")
-        message_id = f"{int(old.timestamp() * 1000):020d}-{index:032x}"
-        item.update(
-            SK=f"MSG#{message_id}",
-            message_id=message_id,
-            posted_at=old.isoformat(),
-            expires_at=(old + timedelta(hours=24)).isoformat(),
-        )
-        table.put_item(Item=item)
-    reads = []
-    original = table.query
+    # Wednesday, Monday and Sunday lectures all close at Monday 00:00 SGT.
+    for day in ("2030-10-23", "2030-10-21", "2030-10-27"):
+        room = ROOM.replace("2030-10-22", day)
+        assert room_closes_at(room) == datetime(2030, 10, 27, 16, tzinfo=UTC)
 
-    def query(**kwargs):
-        response = original(**kwargs)
-        reads.append(response["ScannedCount"])
-        return response
 
+def test_closed_room_is_empty_and_rejects_new_activity(
+    client, auth, table, monkeypatch
+):
+    closed = ROOM.replace("2030-10-22", "2026-08-12")  # Week 1, long past.
+    item = make_message(ROOM, "left over", "student-a")
+    item.update(PK=f"ROOM#{closed}", room_id=closed)
+    table.put_item(Item=item)
+    query = Mock(wraps=table.query)
     monkeypatch.setattr(table, "query", query)
-    response = client.get(path(), headers=auth()).json()
-    assert response == {"items": [], "next_cursor": None}
-    assert reads == [0]
-    reads.clear()
-    cursor = encode_cursor({"PK": f"ROOM#{ROOM}", "SK": item["SK"]}, ROOM)
-    assert (
-        client.get(path(), params={"cursor": cursor}, headers=auth()).json() == response
-    )
-    assert reads == []
+    base = f"/rooms/{closed}"
+    assert client.get(f"{base}/messages", headers=auth()).json() == {
+        "items": [],
+        "next_cursor": None,
+    }
+    assert query.call_count == 0
+    for response in (
+        client.post(f"{base}/messages", json={"content": "hi"}, headers=auth()),
+        client.post(f"{base}/connection-ticket", headers=auth()),
+        client.post(
+            f"{base}/attachment-uploads",
+            json={"filename": "a.pdf", "size": 10},
+            headers=auth(),
+        ),
+    ):
+        assert response.status_code == 403, response.text
+        assert "closed" in response.json()["detail"]
 
 
 def test_history_returns_a_cursor_without_filling_through_expired_rows(
