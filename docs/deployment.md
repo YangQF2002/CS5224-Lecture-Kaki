@@ -109,6 +109,8 @@ Verify discovery, direct links, login, timetable persistence after refresh and l
 
 ## Alerts
 
+![Part 5, monitoring and alerts: the HTTP API's 5xx count and each Lambda's errors and log-based metrics (crash logs, small new semester, enqueue failures) feed CloudWatch alarms, which publish to SNS, which emails confirmed subscribers. Fan-out events that still fail after 2 retries go to SNS directly.](diagrams/architecture-5-monitoring-and-alerts.svg)
+
 CloudWatch watches the functions and sends alarms to one SNS topic, `lecturekaki-terraform-dev-alerts` ([`ingest.tf`](../infra/terraform/ingest.tf)), which emails its subscribers. CloudWatch is managed by AWS and always on; at this scale the alarms, custom metrics and logs fit in the free tier.
 
 How an alarm is raised:
