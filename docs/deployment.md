@@ -103,9 +103,35 @@ aws lambda invoke --function-name $tf.ingest_function_name.value --cli-read-time
 Get-Content build/ingest-result.json
 ```
 
-Check for `FunctionError` and an `errorMessage` in the result. Scheduled ingestion runs Mondays at 03:00 Singapore time and publishes only in teaching Weeks 1–3 or on the first Monday of the month. Keep complete snapshots for rollback; restore a previous `lectures/current.json` with its matching snapshot path and `no-cache` header. Manage alarm email subscriptions separately in SNS and confirm the subscription email; keep personal addresses out of public plan artifacts.
+Check for `FunctionError` and an `errorMessage` in the result. Scheduled ingestion runs Mondays at 03:00 Singapore time and publishes only in teaching Weeks 1–3 or on the first Monday of the month. Keep complete snapshots for rollback; restore a previous `lectures/current.json` with its matching snapshot path and `no-cache` header. For ingestion alarms, see [Alerts](#alerts).
 
 Verify discovery, direct links, login, timetable persistence after refresh and live Forum delivery between two users. A Forum connection should show connected only after readiness acknowledgement and history refresh; a saved message should succeed independently of delivery retries. Check the fan-out Lambda's logs and SNS failure alerts if history works but live events do not. Run another Terraform plan after applying; unexpected drift needs investigation.
+
+## Alerts
+
+CloudWatch watches the functions and sends alarms to one SNS topic, `lecturekaki-terraform-dev-alerts` ([`ingest.tf`](../infra/terraform/ingest.tf)), which emails its subscribers. CloudWatch is managed by AWS and always on; at this scale the alarms, custom metrics and logs fit in the free tier.
+
+How an alarm is raised:
+
+1. **Metric.** Lambda reports `AWS/Lambda › Errors` for every run that fails (uncaught exception, timeout, out of memory, failed start-up). API Gateway reports `AWS/ApiGateway › 5xx` for every 5xx response. For problems that are not failures, a **log metric filter** counts a specific log line into a custom metric under `LectureKaki/terraform-dev`.
+2. **Alarm.** Each alarm adds up its metric in fixed 5-minute windows (10:00–10:05, 10:05–10:10, …). When a window reaches the threshold, the alarm moves to ALARM and publishes to the topic. It emails once per change to ALARM, not for every error, and returns to OK silently. No data counts as OK.
+3. **Email.** SNS sends the alarm to every confirmed subscriber.
+
+| Alarm (`lecturekaki-terraform-dev-…`) | Counts                                               | Fires at   | What to do                                                                                                  |
+| ------------------------------------- | ---------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------- |
+| `api-crashes`                         | Log line "An error occurred running the application" | 1 in 5 min | A bug, unexpected data or missing setting returned HTTP 500. Find the traceback in the API function's logs. |
+| `api-5xx`                             | HTTP API 5xx responses (500, 503, timeouts)          | 5 or more  | Many users are getting errors; check the API logs and DynamoDB/S3 health.                                   |
+| `api-errors`                          | API Lambda errors                                    | 5 or more  | The function itself failed: timeouts (29 s), out of memory or a broken deploy.                              |
+| `forum-live-errors`                   | WebSocket Lambda errors                              | 5 or more  | Connections or readiness are failing; check its logs.                                                       |
+| `forum-fanout-errors`                 | Fan-out Lambda errors                                | 5 or more  | Live delivery is failing. Events that fail after 2 retries are also sent to the topic directly.             |
+| `api-fanout-enqueue-errors`           | Log line "Forum broadcast could not be queued"       | 1 or more  | Messages were saved but not delivered live; users see them on refresh.                                      |
+| `ingest-errors`                       | Ingestion Lambda errors                              | 1 or more  | Lecture data was not updated; the current snapshot stays live. Check the logs, then re-run ingestion.       |
+| `ingest-small-new-semester`           | Log line `SMALL_NEW_SEMESTER`                        | 1 or more  | A new semester was published with under half the previous one's sessions. Check NUSMods, then re-run.       |
+| `forum-pdf-cleanup-errors`            | PDF cleanup Lambda errors                            | 1 or more  | Closed rooms' PDFs were not deleted; the next Monday's run catches up.                                      |
+
+Why there are two API alarms: Mangum, which runs FastAPI on Lambda, turns an unhandled exception into an HTTP 500 and logs the line above. The Lambda run still succeeds, so `api-errors` never sees these crashes. `api-crashes` catches every one of them, even a single one. Handled failures, such as 503 when Forum storage is unavailable, do not log that line, and brief ones are normal, so `api-5xx` alerts only on a sustained run. Log-based alarms depend on the exact log text: keep it unchanged, or update the filter in Terraform with it.
+
+**Receiving alerts.** Subscribers are not in Terraform, so personal addresses stay out of the code and plans. In the console (Asia Pacific (Singapore)): SNS → Topics → `lecturekaki-terraform-dev-alerts` → Subscriptions → **Create subscription** → Protocol **Email**, your address → **Create subscription**, then click **Confirm subscription** in the email AWS sends. Until confirmed it stays "Pending confirmation" and receives nothing. Unsubscribe with the link in any alert, or delete the subscription there.
 
 ## GitHub deployment workflow
 

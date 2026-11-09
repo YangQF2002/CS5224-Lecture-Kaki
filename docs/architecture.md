@@ -42,11 +42,11 @@ The [auth template](../infra/auth.yaml) sets access tokens to 15 minutes and ref
 
 ## Lecture snapshots and room identity
 
-Read `/lectures/current.json`, then use its `path` for `index.json`, `modules.json` (module details, including up to three topics: [title keywords](../backend/jobs/lecture_ingest/topics.py) first, then an [LLM on Bedrock](../backend/jobs/lecture_ingest/llm_topics.py) adds topics from descriptions, cached in `lectures/topic-cache.json`) and `weeks/<label>.json` or `days/<date>.json`. The [publisher](../backend/jobs/lecture_ingest/publish.py) completes the snapshot before switching the pointer. Snapshots use `public, max-age=86400, immutable`; the pointer uses `no-cache`. Empty data and same-semester session counts below half the previous run are rejected.
+Read `/lectures/current.json`, then use its `path` for `index.json`, `modules.json` (module details, including up to three topics: [title keywords](../backend/jobs/lecture_ingest/topics.py) first, then an [LLM on Bedrock](../backend/jobs/lecture_ingest/llm_topics.py) adds topics from descriptions, cached in `lectures/topic-cache.json`) and `weeks/<label>.json` or `days/<date>.json`. The [publisher](../backend/jobs/lecture_ingest/publish.py) completes the snapshot before switching the pointer. Snapshots use `public, max-age=86400, immutable`; the pointer uses `no-cache`. Empty data is rejected. A re-run of the published semester with under half its sessions is rejected too. A new semester with under half the sessions of the one it replaces is still published (the old term has ended), but logs `SMALL_NEW_SEMESTER`, which raises the `…-ingest-small-new-semester` alarm.
 
 Fields are defined by the [transformer](../backend/jobs/lecture_ingest/transform.py) and [frontend types](../frontend/src/features/discovery/types.ts). Coordinate format changes across producer, consumers and tests. Unknown capacity uses `size=0`; online or unmapped venues use `building=null`.
 
-Only `Lecture` lessons are published, excluding NUS-ISS courses. Session dates and lesson times use Singapore time; `generatedAt` is a UTC ISO timestamp. The [calendar](../backend/jobs/lecture_ingest/academic_calendar.py) covers AY2026/27 Semesters 1–2, holidays and early closures; extend it for later years.
+Only `Lecture` lessons are published, excluding NUS-ISS courses. Session dates and lesson times use Singapore time; `generatedAt` is a UTC ISO timestamp. The [calendar](../backend/jobs/lecture_ingest/academic_calendar.py) covers AY2026/27 Semesters 1–2, holidays and early closures; extend it for later years (see [changeover cases](#weeks-access-and-semester-changes)).
 
 Session IDs are `<moduleCode>-<lessonTypeCode>-<classNo>@<date>-<HHMM>-<venue>`. Preserve class-number leading zeroes and venue slashes. A changed date, start time or venue creates a different occurrence. Forum rooms append `@<acadYear>@<semester>`; URL-encode the whole room ID. The [browser](../frontend/src/features/forum/roomCatalogue.ts) checks an exact current-catalogue match; the backend validates format, date, time and academic year.
 
@@ -60,6 +60,13 @@ One rule decides what can be reached and when Forum data is deleted: **a lecture
   - **Messages:** `expires_at` and `ttl` are set to the closing time, and DynamoDB TTL removes them (eventually; reads already hide them).
   - **PDFs:** stored as `uploads/<closing date>/<upload id>.pdf`. The [cleanup job](../backend/app/modules/forum/cleanup.py) runs every Monday at 00:05 ([schedule](../infra/terraform/forum_cleanup.tf)) and permanently deletes every version under folders whose date has passed, including uploads that were never posted.
 - **Semester changes follow ingestion, not the calendar.** The term shown on Discover and the Forum, and the rooms that are valid, come from `current.json`. The [ingestion job](../backend/jobs/lecture_ingest/academic_calendar.py) publishes the next semester on the first Monday of August (Semester 1) or January (Semester 2). By then every room of the old term is in a past week, so it is already closed and its data deleted. Between terms every week is past, so both pages say the term has ended until the next list is published.
+- **Changeover cases:**
+  - **Between terms:** after the last week with lectures (Reading week), every week is past until the next semester is published. For AY2026/27 that is 23 Nov 2026 to 3 Jan 2027: Discover says "This term's lectures have ended" and the Forum lists no weeks. Semester 2 is published on Monday 4 Jan 2027, and all its weeks are open (week 1 starts 11 Jan), so people can post ahead.
+  - **Next semester's data is late:** if NUSMods has not published it, ingestion rejects the empty result and the site stays on the old term with everything closed. It tries again every Monday of teaching weeks 1–3; [run it manually](deployment.md#publish-frontend-and-lectures) once the data is out. If the new semester is published with under half the previous semester's sessions, the `…-ingest-small-new-semester` alarm emails the team: check NUSMods and re-run ingestion once its data is complete.
+  - **Summer (May to July):** [`semester_for`](../backend/jobs/lecture_ingest/academic_calendar.py) keeps Semester 2, so the site shows it with every week closed. Special terms are not ingested: their lessons have no teaching-week numbers, and some have no lessons at all.
+  - **The calendar runs out:** `SEMESTERS` only lists AY2026/27. From August 2027, ingestion fails with "No calendar entry…" and the ingest alarm fires; the site stays on Semester 2, all closed, until the next year's start and last days, holidays and early closures are added.
+  - **Where start dates come from:** the NUSMods API has no semester dates. Semester 1 and 2 lessons give week numbers, and special-term lessons give exact dates or nothing. NUSMods keeps each term's start date by hand in [`academic-calendar.json`](https://github.com/nusmodifications/nusmods/blob/master/packages/nusmods-academic-calendar/academic-calendar.json) (MIT, updated each June or July). It only has start dates, so our calendar is still needed for recess and reading weeks, exam periods and holidays.
+  - **Known gaps between terms:** Discover's ended-term message does not name the term (the Forum still shows "Semester 1"), and a closed discussion link still shows a Retry button, which cannot help.
 
 ## Search
 
@@ -86,16 +93,16 @@ Search runs in the browser; neither search calls the API.
 
 API Gateway holds WebSocket connections; DynamoDB stores room membership. This removes the former single-process broadcast restriction. FastAPI handles HTTP requests on Lambda, while a separate asynchronous Lambda broadcasts to ready connections. No always-on server, shared broker or application load balancer is required.
 
-| Function | Responsibility |
-| --- | --- |
-| HTTP API → FastAPI | Authenticate requests, read/write application data and enqueue live events. |
-| WebSocket API → forum live | Validate tickets, acknowledge readiness and manage connection records. |
-| Asynchronous fan-out | Query room membership, deliver events and retry transient failures. |
+| Function                   | Responsibility                                                              |
+| -------------------------- | --------------------------------------------------------------------------- |
+| HTTP API → FastAPI         | Authenticate requests, read/write application data and enqueue live events. |
+| WebSocket API → forum live | Validate tickets, acknowledge readiness and manage connection records.      |
+| Asynchronous fan-out       | Query room membership, deliver events and retry transient failures.         |
 
 - **Entry points:** [`app/aws_lambda.py`](../backend/app/aws_lambda.py) exposes the three handlers. Mangum adapts HTTP API events to FastAPI; [`gateway.py`](../backend/app/modules/forum/gateway.py) handles WebSocket events and broadcasts.
 - **Delivery:** [`delivery.py`](../backend/app/modules/forum/delivery.py) enqueues broadcasts after HTTP writes commit. The worker uses bounded SDK calls, retries transient failures and reports exhausted failures through SNS. Enqueue failures are logged and alarmed without failing a committed write. A crash between saving and enqueueing can still lose a notification; stored history remains authoritative.
 - **Local mode:** leave `FORUM_WEBSOCKET_URL` and `FORUM_FANOUT_FUNCTION` empty. Tickets point at `/rooms/{id}/live` and the in-memory hub uses the same readiness handshake. Local live delivery requires one process.
-- **Infrastructure:** [`api.tf`](../infra/terraform/api.tf) defines the three Lambdas, their roles, HTTP/WebSocket APIs, retries and alarms. Packaging and releases are covered in [deployment](deployment.md).
+- **Infrastructure:** [`api.tf`](../infra/terraform/api.tf) defines the three Lambdas, their roles, HTTP/WebSocket APIs, retries and alarms ([what each alarm means](deployment.md#alerts)). Packaging and releases are covered in [deployment](deployment.md).
 
 Release the backend and frontend from the same revision because both implement the readiness handshake. The client merges duplicate events by message ID and keeps deletion markers so delayed creates cannot restore deleted messages.
 

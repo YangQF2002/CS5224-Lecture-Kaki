@@ -8,8 +8,8 @@ from botocore.exceptions import ClientError
 from moto import mock_aws
 
 from jobs.lecture_ingest import handler as ingest_handler
-from jobs.lecture_ingest.academic_calendar import week_label
-from jobs.lecture_ingest.publish import SuspiciousDataError, publish
+from jobs.lecture_ingest.academic_calendar import SEMESTERS, week_label
+from jobs.lecture_ingest.publish import SMALL_NEW_SEMESTER, SuspiciousDataError, publish
 from jobs.lecture_ingest.transform import build_modules, build_sessions
 
 BUCKET = "lecturekaki-test-web"
@@ -138,6 +138,45 @@ def test_big_drop_preserves_all_previous_content(s3, sem1, data):
         publish(s3, BUCKET, sem1, sessions[:10], modules, NOW)
 
     assert objects(s3) == before
+
+
+def as_semester(sessions, source, target):
+    """The same lectures moved into another semester's dates."""
+    shift = target.week1_monday - source.week1_monday
+    return [
+        {**session, "date": (date.fromisoformat(session["date"]) + shift).isoformat()}
+        for session in sessions
+    ]
+
+
+def test_small_new_semester_is_published_with_a_warning(s3, sem1, data, caplog):
+    sessions, modules = data
+    publish(s3, BUCKET, sem1, sessions, modules, NOW)
+    sem2 = SEMESTERS[("2026-2027", 2)]
+    few = as_semester(sessions[: len(sessions) // 2 - 1], sem1, sem2)
+
+    with caplog.at_level("WARNING"):
+        result = publish(s3, BUCKET, sem2, few, modules, NOW)
+
+    assert read(s3, "lectures/current.json")["semester"] == 2
+    assert result["path"] == read(s3, "lectures/current.json")["path"]
+    assert "under half" in result["warning"]
+    # The CloudWatch metric filter counts this token in the ingest logs.
+    assert [r for r in caplog.records if SMALL_NEW_SEMESTER in r.getMessage()]
+
+
+def test_new_semester_of_similar_size_has_no_warning(s3, sem1, data, caplog):
+    sessions, modules = data
+    publish(s3, BUCKET, sem1, sessions, modules, NOW)
+    sem2 = SEMESTERS[("2026-2027", 2)]
+
+    with caplog.at_level("WARNING"):
+        result = publish(
+            s3, BUCKET, sem2, as_semester(sessions, sem1, sem2), modules, NOW
+        )
+
+    assert "warning" not in result
+    assert not [r for r in caplog.records if SMALL_NEW_SEMESTER in r.getMessage()]
 
 
 def test_empty_dataset_does_not_write(s3, sem1):

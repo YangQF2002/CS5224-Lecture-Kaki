@@ -179,3 +179,31 @@ resource "aws_cloudwatch_metric_alarm" "ingest_errors" {
   treat_missing_data  = "notBreaching"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 }
+
+# A new semester is published even when it has under half the sessions of the
+# one it replaces (the old term has ended), but someone should check NUSMods.
+# publish.py logs SMALL_NEW_SEMESTER in that case; count those log lines.
+resource "aws_cloudwatch_log_metric_filter" "small_new_semester" {
+  name           = "${local.ingest_function_name}-small-new-semester"
+  log_group_name = aws_cloudwatch_log_group.ingest.name
+  pattern        = "\"SMALL_NEW_SEMESTER\""
+  metric_transformation {
+    name      = "SmallNewSemester"
+    namespace = "LectureKaki/${var.env}"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "small_new_semester" {
+  alarm_name          = "${local.ingest_function_name}-small-new-semester"
+  alarm_description   = "A new semester was published with under half the previous semester's sessions; check NUSMods data and re-run ingestion when complete."
+  namespace           = "LectureKaki/${var.env}"
+  metric_name         = aws_cloudwatch_log_metric_filter.small_new_semester.metric_transformation[0].name
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+}

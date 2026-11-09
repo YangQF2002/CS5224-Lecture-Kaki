@@ -1,6 +1,7 @@
 """Publish a complete lecture snapshot before switching the current-data pointer."""
 
 import json
+import logging
 from datetime import date, datetime, timedelta
 from uuid import uuid4
 
@@ -14,8 +15,13 @@ from .transform import group_by_date
 ROOT = "lectures"
 CACHE_CONTROL = "public, max-age=86400, immutable"
 
-# Refuse to publish if the session count drops below this share of the last run.
+logger = logging.getLogger(__name__)
+
+# Below this share of the last published run: refuse a re-run of the same
+# semester; publish a new semester but log SMALL_NEW_SEMESTER for the alarm.
 MIN_RATIO_OF_PREVIOUS = 0.5
+# Matched by the CloudWatch log metric filter in infra/terraform/ingest.tf.
+SMALL_NEW_SEMESTER = "SMALL_NEW_SEMESTER"
 
 
 class SuspiciousDataError(Exception):
@@ -34,7 +40,7 @@ def publish(
     generated_at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     base = {"acadYear": semester.acad_year, "semester": semester.number}
 
-    _check_counts(s3, bucket, semester, len(sessions))
+    warning = _check_counts(s3, bucket, semester, len(sessions))
 
     documents: dict[str, dict] = {}
 
@@ -89,12 +95,15 @@ def publish(
         cache_control="no-cache",
     )
 
-    return {
+    result = {
         "semester": semester.key,
         "sessions": len(sessions),
         "path": f"{prefix}/",
         "files": len(documents) + 1,
     }
+    if warning:
+        result["warning"] = warning
+    return result
 
 
 def _group_by_week(
@@ -109,20 +118,37 @@ def _group_by_week(
     return weeks
 
 
-def _check_counts(s3, bucket: str, semester: Semester, count: int) -> None:
+def _check_counts(s3, bucket: str, semester: Semester, count: int) -> str | None:
+    """Reject unusable data; return a warning for a suspiciously small new semester.
+
+    A re-run of the published semester that drops below half is refused, since
+    the current snapshot is better. A new semester cannot be compared with
+    itself, so it is compared with the semester it replaces: it is still
+    published (the old term has ended), but logged for the alarm to report.
+    """
     if count == 0:
         raise SuspiciousDataError("NUSMods returned no lecture sessions")
     current = _get_json(s3, bucket, f"{ROOT}/current.json")
-    if not current or (current["acadYear"], current["semester"]) != (
+    if not current:
+        return None
+    previous = _get_json(s3, bucket, f"{current['path']}index.json")
+    if not previous or count >= previous["sessionCount"] * MIN_RATIO_OF_PREVIOUS:
+        return None
+    same_semester = (current["acadYear"], current["semester"]) == (
         semester.acad_year,
         semester.number,
-    ):
-        return
-    previous = _get_json(s3, bucket, f"{current['path']}index.json")
-    if previous and count < previous["sessionCount"] * MIN_RATIO_OF_PREVIOUS:
+    )
+    if same_semester:
         raise SuspiciousDataError(
             f"Only {count} sessions, down from {previous['sessionCount']} last run"
         )
+    warning = (
+        f"{semester.key} has {count} sessions, under half of the "
+        f"{previous['sessionCount']} in {current['acadYear']}/sem-{current['semester']}; "
+        "NUSMods data may be incomplete"
+    )
+    logger.warning("%s %s", SMALL_NEW_SEMESTER, warning)
+    return warning
 
 
 def _put_json(
