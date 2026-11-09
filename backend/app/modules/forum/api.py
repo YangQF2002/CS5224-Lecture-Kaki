@@ -25,11 +25,13 @@ from app.modules.profile import username_for
 from . import attachment_store, attachments, delivery, realtime, repository
 from .schemas import ConnectionTicket, MessageIn, MessageOut, MessagePage, RoomId
 from .service import (
+    ROOM_CLOSED,
     collect_page,
     decode_cursor,
     frontend_origins,
     item_to_message,
     make_message,
+    room_is_open,
     websocket_url,
 )
 
@@ -37,6 +39,12 @@ router = APIRouter(prefix="/rooms", tags=["Forum"])
 logger = logging.getLogger(__name__)
 
 _Auth = Annotated[CurrentUser, Depends(get_current_user)]
+
+
+def _require_open(room_id: str) -> None:
+    # A past week's discussion is closed and its messages have expired.
+    if not room_is_open(room_id):
+        raise HTTPException(status_code=403, detail=ROOM_CLOSED)
 
 
 async def _publish(room_id: str, event: dict) -> None:
@@ -53,6 +61,7 @@ async def post_message(
     body: MessageIn,
     user: _Auth,
 ) -> MessageOut:
+    _require_open(room_id)
     # Posting still works, labelled "Student", if profiles are unavailable.
     author_name = await run_in_threadpool(username_for, user.user_id)
     item = make_message(room_id, body.content, user.user_id, author_name)
@@ -83,6 +92,7 @@ async def post_message(
 def connection_ticket(
     room_id: RoomId, user: _Auth, request: Request
 ) -> ConnectionTicket:
+    _require_open(room_id)
     # The shared get_current_user dependency has verified this exact bearer token.
     token = request.headers["authorization"].partition(" ")[2]
     expires_at = int(jwt.decode(token, options={"verify_signature": False})["exp"])

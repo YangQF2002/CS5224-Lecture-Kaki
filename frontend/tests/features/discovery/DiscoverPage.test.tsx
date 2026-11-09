@@ -160,6 +160,8 @@ function renderPage(url = '/') {
 }
 
 beforeEach(() => {
+  // Sunday before week 11 in Singapore: the fixture week is still open.
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-10-25T02:00:00Z') })
   localStorage.clear()
   vi.mocked(fetchModule)
     .mockReset()
@@ -194,6 +196,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  vi.useRealTimers()
 })
 
 it('lists the week’s lectures grouped by day', async () => {
@@ -361,6 +364,28 @@ it('links each lecture to the discussion for its actual session and term', async
   expect(discussion.getAttribute('href')).toBe(
     roomPath(roomIdFor(sessions[0], pointer)),
   )
+})
+
+it('does not list weeks that have ended, as in the Forum', async () => {
+  vi.mocked(fetchLectureSnapshot).mockResolvedValue({
+    ...snapshot,
+    index: {
+      ...snapshot.index,
+      weeks: [
+        {
+          week: 'week-10',
+          startDate: '2026-10-19',
+          endDate: '2026-10-25',
+          sessionCount: 1,
+        },
+        ...snapshot.index.weeks,
+      ],
+    },
+  })
+  vi.setSystemTime(new Date('2026-10-26T02:00:00Z')) // Monday of week 11.
+  renderPage('/?week=week-10')
+  await screen.findByText('2 lectures in Week 11')
+  expect(fetchWeekSessions).not.toHaveBeenCalledWith(pointer, 'week-10')
 })
 
 it('keeps the search field in sync when another link changes the filters', async () => {

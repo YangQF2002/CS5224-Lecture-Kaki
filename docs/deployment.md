@@ -4,21 +4,21 @@ Use PowerShell from the repository root in `ap-southeast-1`. Local setup is in [
 
 ## Infrastructure ownership
 
-Terraform in [`infra/terraform`](../infra/terraform) manages the website, API and lecture ingestion. Its shared state is `s3://lecturekaki-tfstate-320465872576/lecture-kaki/terraform-dev.tfstate`, with versioning and S3 locking. The existing CloudFormation stacks retain ownership of Cognito and application data; Terraform reads the existing tables and uses the existing Cognito client. Do not import these resources into Terraform while CloudFormation still manages them.
+Terraform in [`infra/terraform`](../infra/terraform) manages the website, API and lecture ingestion. Its shared state is `s3://lecturekaki-tfstate-320465872576/lecture-kaki/terraform-dev.tfstate`, with versioning and S3 locking. The existing CloudFormation stacks retain ownership of Cognito and the Forum and timetable tables; Terraform reads those tables and uses the existing Cognito client. Do not import a resource into Terraform while CloudFormation still manages it; the Forum PDF bucket was moved by first deleting its stack with `Retain` ([record](#forum-pdf-bucket-handover-to-terraform)).
 
-| Resource                                  | Owner                                                                                   |
-| ----------------------------------------- | --------------------------------------------------------------------------------------- |
-| Website, Lambda API, ingestion and alarms | `infra/terraform/`                                                                      |
-| Cognito pool/client/signup validation     | `lecture-kaki-auth-dev`, [`infra/auth.yaml`](../infra/auth.yaml)                        |
-| Timetable table                           | `lecture-kaki-timetable-dev`, [`infra/timetable.yaml`](../infra/timetable.yaml)         |
-| Forum table                               | Existing retained `lecturekaki-dev-forum`                                               |
-| Forum PDF bucket `lecturekaki-forum`      | CloudFormation `lecture-kaki-forum-pdfs-dev`, [`infra/forum.yaml`](../infra/forum.yaml) |
-| Profile table (usernames, topics)         | `infra/terraform/`, `lecture-kaki-profiles-terraform-dev`                               |
-| GitHub OIDC and deployment role           | `infra/terraform/github/`, separate state                                               |
+| Resource                                  | Owner                                                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Website, Lambda API, ingestion and alarms | `infra/terraform/`                                                                         |
+| Cognito pool/client/signup validation     | `lecture-kaki-auth-dev`, [`infra/auth.yaml`](../infra/auth.yaml)                           |
+| Timetable table                           | `lecture-kaki-timetable-dev`, [`infra/timetable.yaml`](../infra/timetable.yaml)            |
+| Forum table                               | Existing retained `lecturekaki-dev-forum`                                                  |
+| Forum PDF bucket `lecturekaki-forum`      | `infra/terraform/forum.tf` (imported; [handover](#forum-pdf-bucket-handover-to-terraform)) |
+| Profile table (usernames, topics)         | `infra/terraform/`, `lecture-kaki-profiles-terraform-dev`                                  |
+| GitHub OIDC and deployment role           | `infra/terraform/github/`, separate state                                                  |
 
-Terraform's `forum.tf` reads the existing PDF bucket and grants the API role access to `uploads/*`; `api.tf` passes its name as `FORUM_ATTACHMENTS_BUCKET` and permits Forum upload-record updates. Keep the bucket's policy, versioning, encryption, cleanup and public-access blocks under CloudFormation. Before deploying PDF uploads to a new website origin, the stack owner must include that exact HTTPS origin in the Forum stack's `FrontendOrigins`, preserving existing origins. Downloads navigate directly to signed S3 links and do not require GET CORS.
+Terraform's `forum.tf` manages the PDF bucket: versioning, encryption (SSE-C blocked), owner-enforced ownership, public-access block, the TLS-only and conditional-upload bucket policy, CORS and lifecycle. `prevent_destroy` stops any plan from deleting it, and its existing tags are left as they are. It grants the API role access to `uploads/*`; `api.tf` passes the name as `FORUM_ATTACHMENTS_BUCKET`. Upload CORS allows the two local development origins and `local.website_url`, so a new website address is picked up on the next apply. Downloads navigate directly to signed S3 links and do not require GET CORS.
 
-PDF download links last at most 60 seconds and are capped by the message's 24-hour expiry. Deletion stops new links immediately and attempts to delete the pinned object version; an already-issued link can still work until it expires if physical deletion fails. A download started before expiry may finish afterward.
+PDF download links last at most 60 seconds and are capped by the message's expiry (the end of its lecture's week). Terraform's [`forum_cleanup.tf`](../infra/terraform/forum_cleanup.tf) runs a Lambda every Monday at 00:05 Singapore time that deletes every version of closed rooms' PDFs; its role can only list and delete under `uploads/`, and failures alert through the shared SNS topic. The bucket's lifecycle no longer expires current PDFs by age (the old CloudFormation rule deleted them after 2 days, before their rooms closed); it only removes old versions, delete markers and incomplete uploads. Deletion stops new links immediately and attempts to delete the pinned object version; an already-issued link can still work until it expires if physical deletion fails. A download started before expiry may finish afterward.
 
 Terraform also declares two unused tables and a signup log group from an earlier partial deployment; keep them until cleanup is agreed. The former Caddy certificate volume is outside Terraform management and can be deleted after verifying the Lambda deployment. Preserve the active auth and data resources listed above.
 
@@ -49,6 +49,24 @@ $tf = terraform '-chdir=infra/terraform' output -json | ConvertFrom-Json
 The API is packaged from the checked-out `backend/app` into `build/api.zip` (Linux wheels, whatever machine builds it); one package backs the HTTP, WebSocket connection and asynchronous fan-out functions. Terraform updates the functions when the package hash changes. API Gateway holds open sockets; `api_url` and `forum_websocket_url` are stable `execute-api` addresses. Check `Invoke-RestMethod "$($tf.api_url.value)/health"` returns `status: ok` before releasing the frontend. Release both from the same revision because the client and backend share the readiness handshake; reload existing browser tabs when first introducing it.
 
 For a new website address, update `CallbackURLs` and `LogoutURLs` in `lecture-kaki-auth-dev` to include `<website_url>/auth/callback` and `<website_url>/forum`. Preserve the existing domain and other URLs. Use a CloudFormation change set and confirm it modifies the client without replacing the user pool. Auth Lambda changes require packaging [`infra/auth.yaml`](../infra/auth.yaml) through the team's private artifact bucket before updating that stack.
+
+### Forum PDF bucket handover to Terraform
+
+**Record.** On 9 Nov 2026 the Forum PDF bucket `lecturekaki-forum` moved from the CloudFormation stack `lecture-kaki-forum-pdfs-dev` to Terraform ([`forum.tf`](../infra/terraform/forum.tf)). The bucket, its policy and its PDFs were never deleted or recreated. Done in the AWS console by `eline-dev`:
+
+| Time (SGT)  | Step                                                                                                                                                                                                                                             | Result                                                                      |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| 14:50–14:51 | Change set `retain-before-terraform` from the retired `infra/forum.yaml`, keeping every parameter: added `DeletionPolicy: Retain` to the bucket policy (the bucket already had it) and removed the lifecycle rule's 2-day expiry of current PDFs | `PdfBucket` and `PdfBucketPolicy` `UPDATE_COMPLETE`, no replacement         |
+| 14:52       | Deleted the stack                                                                                                                                                                                                                                | `PdfBucket` and `PdfBucketPolicy` `DELETE_SKIPPED`; stack `DELETE_COMPLETE` |
+
+Checked afterwards: the bucket policy still has `RequireTls` and `RequireConditionalUploads`, and lifecycle rule `ExpireUploadsAndVersions` only expires old versions and incomplete uploads.
+
+**Why it was done this way.** The pipeline never deployed that stack, so bucket changes (such as the lifecycle rule that weekly rooms need) had to be made by hand. `DeletionPolicy: Retain` makes CloudFormation leave a resource in place when its stack is deleted, so deleting the stack only removed CloudFormation's record. Terraform's `import` blocks then adopt the existing bucket rather than creating one. The stack was deleted before merging so that the two tools never manage the bucket at the same time; a later stack update would otherwise undo Terraform's settings.
+
+**Still to do.**
+
+1. **Merge.** The pipeline's plan should show `8 to import, 0 to add, 1 to change, 0 to destroy`. The one change is upload CORS dropping `https://d7jt5x0l6e3o7.cloudfront.net`, the address of the old CloudFormation website (`lecture-kaki-hosting-dev`, deleted on 6 Nov 2026 when hosting moved to Terraform), which had stayed in the stack's `FrontendOrigins`. Terraform now sets CORS from `local.website_url`. Any `destroy`, `replace` or `add` for a `forum_pdfs` resource means do not approve.
+2. **After the apply**, remove the `import` blocks from `forum.tf`; they do nothing once applied.
 
 AWS assigns the `cloudfront.net` hostname. For a custom domain you control, configure the distribution's `aliases` and `viewer_certificate` in `infra/terraform/hosting.tf`, using a validated ACM certificate in `us-east-1`; point the domain's DNS to CloudFront. Set `local.website_url` in `infra/terraform/auth.tf` to that HTTPS origin, update Cognito's URLs as above, then apply and rebuild the frontend. This also updates the API's allowed origin. Keep the existing site available until the custom domain is verified.
 

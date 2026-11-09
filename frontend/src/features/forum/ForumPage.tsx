@@ -8,13 +8,16 @@ import { deleteMessage, ForumApiError, getCurrentUser, getMessages, needsSignIn,
 // prettier-ignore
 import { subscribeToRoom, type LiveStatus, type RoomEvent } from './forumSocket.ts'
 // prettier-ignore
-import { lectureDate, lectureTime, resolveRoom, RoomNotFound, roomPath, type LectureRoom } from './roomCatalogue.ts'
+import { lectureDate, lectureTime, resolveRoom, ROOM_CLOSED, roomClosesAt, RoomNotFound, roomPath, type LectureRoom } from './roomCatalogue.ts'
 import { clearRoomSession, forgetRoom, rememberRoom } from './roomSession.ts'
 import ForumComposer from './ForumComposer.tsx'
 import ForumLayout from './ForumLayout.tsx'
 import PdfAttachment from './PdfAttachment.tsx'
 import { downloadPdf } from './forumPdf.ts'
 import './forum.css'
+
+// setTimeout fires at once for delays beyond about 24.8 days.
+const MAX_TIMER_DELAY = 2 ** 31 - 1
 
 const LIVE_LABELS: Record<LiveStatus, string> = {
   connecting: 'Connecting live updates…',
@@ -237,7 +240,7 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
       () => {
         setMessages((previous) => mergeMessages(deletedIds.current, previous))
       },
-      Math.max(0, nextExpiry - Date.now()),
+      Math.min(MAX_TIMER_DELAY, Math.max(0, nextExpiry - Date.now())),
     )
     return () => clearTimeout(timer)
   }, [messages])
@@ -373,7 +376,7 @@ function RoomDiscussion({ room }: { room: LectureRoom }) {
             </span>
             <div>
               <h2>Lecture chat</h2>
-              <p>Messages disappear after 24 hours</p>
+              <p>Messages disappear when this lecture’s week ends</p>
             </div>
           </div>
           <div className="chat-tools">
@@ -568,6 +571,21 @@ function ValidatedDiscussion({ roomId }: { roomId: string }) {
       cancelled = true
     }
   }, [roomId, retry])
+  // Close an open discussion the moment its week ends; this also ends the socket.
+  useEffect(() => {
+    if (!room) return
+    const delay = roomClosesAt(room.session.date) - Date.now()
+    if (delay > MAX_TIMER_DELAY) return
+    const timer = setTimeout(
+      () => {
+        forgetRoom(roomId)
+        setRoom(null)
+        setError(ROOM_CLOSED)
+      },
+      Math.max(0, delay),
+    )
+    return () => clearTimeout(timer)
+  }, [room, roomId])
   function retryRoom() {
     setError('')
     setRetry((value) => value + 1)

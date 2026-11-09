@@ -9,8 +9,9 @@ from botocore.exceptions import ClientError
 from starlette.websockets import WebSocketDisconnect
 
 from app.modules.forum import attachment_store as store
+from app.modules.forum.service import room_closes_at
 
-ROOM = "BT1101-LEC-1@2026-10-20-0800-LT11@2026-2027@1"
+ROOM = "BT1101-LEC-1@2030-10-22-0800-LT11@2026-2027@1"
 OTHER_ROOM = ROOM.replace("BT1101", "CS5224")
 MESSAGES = f"/rooms/{quote(ROOM, safe='')}/messages"
 
@@ -99,9 +100,7 @@ def test_pdf_live_history_download_and_delete(client, auth, pdf, monkeypatch):
         assert response.status_code == 201, response.text
         message = response.json()
         assert message["content"] == ""
-        assert datetime.fromisoformat(message["expires_at"]) - datetime.fromisoformat(
-            message["posted_at"]
-        ) == timedelta(hours=24)
+        assert datetime.fromisoformat(message["expires_at"]) == room_closes_at(pdf.room)
         assert message["attachment"] == {
             "filename": "lecture.pdf",
             "size": len(pdf.data),

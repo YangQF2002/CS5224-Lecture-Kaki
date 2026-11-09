@@ -20,7 +20,7 @@ from app.modules.auth import CurrentUser, get_current_user
 from . import attachment_store as store
 from . import repository
 from .schemas import RoomId
-from .service import is_expired
+from .service import ROOM_CLOSED, is_expired, pdf_folder, room_is_open
 
 router = APIRouter(prefix="/rooms", tags=["Forum PDFs"])
 _Auth = Annotated[CurrentUser, Depends(get_current_user)]
@@ -153,6 +153,8 @@ def _prepare_attachment(item):
 
 @router.post("/{room_id:path}/attachment-uploads", status_code=201)
 def start_upload(room_id: RoomId, body: UploadIn, user: _Auth):
+    if not room_is_open(room_id):
+        raise HTTPException(status_code=403, detail=ROOM_CLOSED)
     client, bucket = store.s3()
     upload_id = uuid4().hex
     item = {
@@ -162,7 +164,8 @@ def start_upload(room_id: RoomId, body: UploadIn, user: _Auth):
         "author_id": user.user_id,
         "filename": body.filename,
         "size": body.size,
-        "key": f"uploads/{upload_id}.pdf",
+        # Grouped by closing date so cleanup deletes a closed room's PDFs together.
+        "key": f"uploads/{pdf_folder(room_id)}/{upload_id}.pdf",
         "ttl": int(time()) + store.UPLOAD_SECONDS,
     }
     try:

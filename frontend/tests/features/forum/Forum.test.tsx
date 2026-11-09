@@ -12,7 +12,10 @@ import ForumHome from '../../../src/features/forum/ForumHome.tsx'
 import ForumPage from '../../../src/features/forum/ForumPage.tsx'
 // prettier-ignore
 import { subscribeToRoom, type RoomEvent } from '../../../src/features/forum/forumSocket.ts'
-import { roomPath } from '../../../src/features/forum/roomCatalogue.ts'
+import {
+  ROOM_CLOSED,
+  roomPath,
+} from '../../../src/features/forum/roomCatalogue.ts'
 import { SignInRequired } from '../../../src/features/forum/auth.ts'
 import * as timetableApi from '../../../src/features/timetable/timetableApi.ts'
 
@@ -147,7 +150,13 @@ function renderForum(url = roomPath(roomId)) {
     </MemoryRouter>,
   )
 }
+// Wednesday of week 10 in Singapore: the fixture lectures are still open.
+const WEEK_10 = new Date('2026-10-21T02:00:00Z')
+function setToday(now: Date) {
+  vi.useFakeTimers({ toFake: ['Date'], now })
+}
 beforeEach(() => {
+  setToday(WEEK_10)
   vi.resetAllMocks()
   sessionStorage.clear()
   localStorage.clear()
@@ -171,6 +180,33 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  vi.useRealTimers()
+})
+
+it('lists only this week and later once a week has ended', async () => {
+  setToday(new Date('2026-10-26T02:00:00Z')) // Monday of week 11.
+  renderForum('/forum?browse=1')
+  const trigger = await screen.findByRole('combobox', { name: 'Week' })
+  await waitFor(() => expect(trigger.hasAttribute('disabled')).toBe(false))
+  fireEvent.keyDown(trigger, { key: 'ArrowDown', code: 'ArrowDown' })
+  expect(await screen.findByRole('option', { name: /Week 11/ })).toBeTruthy()
+  expect(screen.queryByRole('option', { name: /Week 10/ })).toBeNull()
+})
+
+it('does not open a past week’s discussion from a saved link', async () => {
+  setToday(new Date('2026-10-26T02:00:00Z'))
+  renderForum()
+  expect(await screen.findByText(ROOM_CLOSED)).toBeTruthy()
+  expect(api.getMessages).not.toHaveBeenCalled()
+})
+
+it('closes an open discussion when its week ends', async () => {
+  // 100 ms before Monday 00:00 in Singapore.
+  setToday(new Date('2026-10-25T15:59:59.900Z'))
+  renderForum()
+  await screen.findByText(own.content)
+  expect(await screen.findByText(ROOM_CLOSED)).toBeTruthy()
+  expect(screen.queryByText(own.content)).toBeNull()
 })
 
 it('loads history, delivers live replies and posts/deletes owned messages', async () => {
