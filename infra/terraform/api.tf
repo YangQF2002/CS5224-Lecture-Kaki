@@ -297,6 +297,53 @@ resource "aws_cloudwatch_metric_alarm" "fanout_enqueue_errors" {
   alarm_actions       = [aws_sns_topic.alerts.arn]
 }
 
+# Mangum turns an unhandled exception in the FastAPI app into an HTTP 500 and
+# logs this line, so the Lambda run still succeeds and the Errors alarm never
+# sees it. Count the line instead: every crash alerts, even a single one.
+# Handled failures (e.g. 503 when DynamoDB is unreachable) do not log it.
+resource "aws_cloudwatch_log_metric_filter" "api_crashes" {
+  name           = "${local.api_function_name}-crashes"
+  log_group_name = aws_cloudwatch_log_group.api.name
+  pattern        = "\"An error occurred running the application\""
+  metric_transformation {
+    name      = "ApiCrashes"
+    namespace = "LectureKaki/${var.env}"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_crashes" {
+  alarm_name          = "${local.api_function_name}-crashes"
+  alarm_description   = "The API returned HTTP 500 for an unhandled exception; find the traceback in the API function's logs."
+  namespace           = "LectureKaki/${var.env}"
+  metric_name         = aws_cloudwatch_log_metric_filter.api_crashes.metric_transformation[0].name
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+}
+
+# Every 5xx users received from the HTTP API: crashes (500), handled outages
+# such as storage being unavailable (503), timeouts and throttling. A few
+# 503s from brief hiccups are normal, so alert on a sustained run only.
+resource "aws_cloudwatch_metric_alarm" "api_5xx" {
+  alarm_name          = "${local.api_function_name}-5xx"
+  alarm_description   = "The HTTP API returned 5 or more 5xx responses in 5 minutes; check the API function's logs and DynamoDB/S3 health."
+  namespace           = "AWS/ApiGateway"
+  metric_name         = "5xx"
+  dimensions          = { ApiId = aws_apigatewayv2_api.http.id }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 5
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alerts.arn]
+}
+
 # --- HTTP API: every request invokes the FastAPI function ---
 
 resource "aws_apigatewayv2_api" "http" {
