@@ -16,6 +16,22 @@
   color: var(--muted);
   font-size: var(--text-small);
 }
+/* Full width, below the title and term. */
+.discover-header.page-heading .discover-disclaimer {
+  flex-basis: 100%;
+  margin: 0.25rem 0 0;
+  padding: 0.7rem 1rem;
+  border-left: 3px solid var(--green);
+  border-radius: 0.5rem;
+  color: var(--muted);
+  background: var(--green-soft);
+  font-size: var(--text-label);
+  line-height: 1.55;
+}
+.discover-disclaimer strong {
+  color: var(--ink);
+  font-weight: 600;
+}
 .discovery-searchbar {
   display: flex;
   align-items: center;
