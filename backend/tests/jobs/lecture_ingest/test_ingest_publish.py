@@ -100,6 +100,75 @@ def test_republication_switches_pointer_and_preserves_previous_snapshot(s3, sem1
     assert f"{second['path']}days/2026-10-13.json" not in objects(s3, second["path"])
 
 
+LATER = datetime(2026, 10, 25, 19, 0, tzinfo=UTC)
+
+
+def test_unchanged_data_only_records_the_check(s3, sem1, data):
+    sessions, modules = data
+    first = publish(s3, BUCKET, sem1, sessions, modules, NOW)
+    pointer = read(s3, "lectures/current.json")
+    snapshot = {k: v for k, v in objects(s3).items() if k != "lectures/current.json"}
+
+    second = publish(s3, BUCKET, sem1, sessions, modules, LATER)
+
+    assert second["unchanged"] and second["path"] == first["path"]
+    # No snapshot files were written or changed.
+    assert {
+        k: v for k, v in objects(s3).items() if k != "lectures/current.json"
+    } == snapshot
+    current = read(s3, "lectures/current.json")
+    assert current["path"] == pointer["path"]
+    assert current["generatedAt"] == pointer["generatedAt"]
+    assert current["contentHash"] == pointer["contentHash"]
+    assert current["checkedAt"] == "2026-10-25T19:00:00Z"
+
+
+def test_changed_data_publishes_a_new_snapshot(s3, sem1, data):
+    sessions, modules = data
+    first = publish(s3, BUCKET, sem1, sessions, modules, NOW)
+    changed = [{**sessions[0], "venue": "LT99"}, *sessions[1:]]
+
+    second = publish(s3, BUCKET, sem1, changed, modules, LATER)
+
+    assert "unchanged" not in second and second["path"] != first["path"]
+    current = read(s3, "lectures/current.json")
+    assert current["path"] == second["path"]
+    assert (
+        current["contentHash"] != read(s3, f"{first['path']}index.json")["contentHash"]
+    )
+    assert (
+        current["contentHash"] == read(s3, f"{second['path']}index.json")["contentHash"]
+    )
+
+
+def test_topic_changes_count_as_changes(s3, sem1, data):
+    sessions, modules = data
+    publish(s3, BUCKET, sem1, sessions, modules, NOW)
+    retagged = [{**modules[0], "topics": ["Other"]}, *modules[1:]]
+    assert "unchanged" not in publish(s3, BUCKET, sem1, sessions, retagged, LATER)
+
+
+def test_force_republishes_unchanged_data(s3, sem1, data):
+    sessions, modules = data
+    first = publish(s3, BUCKET, sem1, sessions, modules, NOW)
+    second = publish(s3, BUCKET, sem1, sessions, modules, LATER, force=True)
+    assert "unchanged" not in second and second["path"] != first["path"]
+
+
+def test_pointer_from_before_fingerprints_is_republished_once(s3, sem1, data):
+    sessions, modules = data
+    publish(s3, BUCKET, sem1, sessions, modules, NOW)
+    legacy = read(s3, "lectures/current.json")
+    for field in ("contentHash", "checkedAt"):
+        legacy.pop(field)
+    s3.put_object(
+        Bucket=BUCKET, Key="lectures/current.json", Body=json.dumps(legacy).encode()
+    )
+
+    assert "unchanged" not in publish(s3, BUCKET, sem1, sessions, modules, LATER)
+    assert publish(s3, BUCKET, sem1, sessions, modules, LATER)["unchanged"]
+
+
 @pytest.mark.parametrize("failure", ["snapshot-file", "current-pointer"])
 def test_failed_upload_preserves_published_snapshot(
     s3, sem1, data, monkeypatch, failure
@@ -194,6 +263,20 @@ def test_handler(s3, monkeypatch, module_info, venue_info, data):
     fetch.assert_called_once_with("2026-2027", 1)
     assert result["sessions"] == len(data[0])
     assert read(s3, f"{result['path']}modules.json")["items"] == data[1]
+
+
+def test_handler_skips_unchanged_data_unless_forced(
+    s3, monkeypatch, module_info, venue_info
+):
+    monkeypatch.setenv("WEB_BUCKET", BUCKET)
+    fetch = Mock(return_value=(module_info, venue_info))
+    monkeypatch.setattr(ingest_handler, "fetch_semester", fetch)
+    run = {"date": "2026-10-19"}
+    first = ingest_handler.handler(run, None, s3=s3, now=NOW)
+
+    assert ingest_handler.handler(run, None, s3=s3, now=LATER)["unchanged"]
+    forced = ingest_handler.handler({**run, "force": True}, None, s3=s3, now=LATER)
+    assert "unchanged" not in forced and forced["path"] != first["path"]
 
 
 @pytest.mark.parametrize(

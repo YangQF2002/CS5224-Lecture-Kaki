@@ -972,11 +972,19 @@ function DiscoverPage() {
           asked.
         </p>
         <p>
-          Lecture data updated{' '}
-          {formatDate(snapshot.pointer.generatedAt.slice(0, 10), {
-            day: 'numeric',
-            month: 'short',
-          })}
+          Lecture data checked{' '}
+          {/* Timestamps are UTC; the Monday 03:00 run is Sunday in UTC */}
+          {formatDate(
+            singaporeNow(
+              new Date(
+                snapshot.pointer.checkedAt ?? snapshot.pointer.generatedAt,
+              ),
+            ).date,
+            {
+              day: 'numeric',
+              month: 'short',
+            },
+          )}
         </p>
       </footer>
     </main>

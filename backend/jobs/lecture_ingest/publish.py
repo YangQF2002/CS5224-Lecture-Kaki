@@ -1,5 +1,6 @@
 """Publish a complete lecture snapshot before switching the current-data pointer."""
 
+import hashlib
 import json
 import logging
 from datetime import date, datetime, timedelta
@@ -35,12 +36,21 @@ def publish(
     sessions: list[dict],
     modules: list[dict],
     now: datetime,
+    *,
+    force: bool = False,
 ) -> dict:
+    """Publish a new snapshot, or only record the check if nothing changed
+
+    The snapshot is built in memory first. If its fingerprint matches the live
+    one, no files are written: readers and caches keep the current snapshot,
+    and current.json only gets a new checkedAt. `force` forces a publish
+    """
     prefix = f"{ROOT}/{semester.key}/{uuid4().hex}"
     generated_at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     base = {"acadYear": semester.acad_year, "semester": semester.number}
 
-    warning = _check_counts(s3, bucket, semester, len(sessions))
+    current = _get_json(s3, bucket, f"{ROOT}/current.json")
+    warning = _check_counts(s3, bucket, semester, len(sessions), current)
 
     documents: dict[str, dict] = {}
 
@@ -82,6 +92,28 @@ def publish(
         # Every topic a module can have; the Profile page offers these to choose from.
         "topics": list(TAXONOMY),
     }
+
+    content_hash = _fingerprint(documents, prefix)
+    if not force and current and current.get("contentHash") == content_hash:
+        # Same data as the live snapshot: keep its files and generatedAt, and
+        # only record that it was checked.
+        pointer = {k: v for k, v in current.items() if k != "generatedAt"}
+        _put_json(
+            s3,
+            bucket,
+            f"{ROOT}/current.json",
+            {**pointer, "checkedAt": generated_at},
+            current["generatedAt"],
+            cache_control="no-cache",
+        )
+        return {
+            "semester": semester.key,
+            "sessions": len(sessions),
+            "path": current["path"],
+            "unchanged": True,
+        }
+
+    documents[f"{prefix}/index.json"]["contentHash"] = content_hash
     for key, document in documents.items():
         _put_json(s3, bucket, key, document, generated_at)
 
@@ -90,7 +122,12 @@ def publish(
         s3,
         bucket,
         f"{ROOT}/current.json",
-        {**base, "path": f"{prefix}/"},
+        {
+            **base,
+            "path": f"{prefix}/",
+            "contentHash": content_hash,
+            "checkedAt": generated_at,
+        },
         generated_at,
         cache_control="no-cache",
     )
@@ -118,7 +155,20 @@ def _group_by_week(
     return weeks
 
 
-def _check_counts(s3, bucket: str, semester: Semester, count: int) -> str | None:
+def _fingerprint(documents: dict[str, dict], prefix: str) -> str:
+    """SHA-256 of every file's path and content within the snapshot.
+
+    Leaves out what differs on every run with the same data: the random folder
+    name (paths are relative to it) and generatedAt (added only when writing).
+    """
+    relative = {key.removeprefix(f"{prefix}/"): doc for key, doc in documents.items()}
+    text = json.dumps(relative, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _check_counts(
+    s3, bucket: str, semester: Semester, count: int, current: dict | None
+) -> str | None:
     """Reject unusable data; return a warning for a suspiciously small new semester.
 
     A re-run of the published semester that drops below half is refused, since
@@ -128,7 +178,6 @@ def _check_counts(s3, bucket: str, semester: Semester, count: int) -> str | None
     """
     if count == 0:
         raise SuspiciousDataError("NUSMods returned no lecture sessions")
-    current = _get_json(s3, bucket, f"{ROOT}/current.json")
     if not current:
         return None
     previous = _get_json(s3, bucket, f"{current['path']}index.json")
