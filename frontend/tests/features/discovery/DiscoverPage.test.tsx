@@ -199,6 +199,21 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+it('shows when the lecture data was last checked, in Singapore time', async () => {
+  // Sunday 19:00 UTC == Monday 03:00 run in Singapore
+  vi.mocked(fetchLectureSnapshot).mockResolvedValue({
+    ...snapshot,
+    pointer: { ...pointer, checkedAt: '2026-11-08T19:00:00Z' },
+  })
+  renderPage()
+  expect(await screen.findByText(/Lecture data checked 9 Nov/)).toBeTruthy()
+})
+
+it('falls back to the publish date for snapshots without a check date', async () => {
+  renderPage()
+  expect(await screen.findByText(/Lecture data checked 26 Oct/)).toBeTruthy()
+})
+
 it('lists the week’s lectures grouped by day', async () => {
   renderPage()
 

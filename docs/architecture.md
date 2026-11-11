@@ -48,7 +48,24 @@ The [auth template](../infra/auth.yaml) sets access tokens to 15 minutes and ref
 
 ![Part 4, weekly jobs: on Mondays EventBridge Scheduler runs the ingest Lambda at 03:00, which fetches modules and venues from NUSMods, tags topics with Bedrock and writes a snapshot and then current.json to the S3 web bucket, and the PDF cleanup Lambda at 00:05, which deletes every version of closed rooms' PDFs from the forum PDF bucket.](diagrams/architecture-4-weekly-jobs.svg)
 
-Read `/lectures/current.json`, then use its `path` for `index.json`, `modules.json` (module details, including up to three topics: [title keywords](../backend/jobs/lecture_ingest/topics.py) first, then an [LLM on Bedrock](../backend/jobs/lecture_ingest/llm_topics.py) adds topics from descriptions, cached in `lectures/topic-cache.json`) and `weeks/<label>.json` or `days/<date>.json`. The [publisher](../backend/jobs/lecture_ingest/publish.py) completes the snapshot before switching the pointer. Snapshots use `public, max-age=86400, immutable`; the pointer uses `no-cache`. Empty data is rejected. A re-run of the published semester with under half its sessions is rejected too. A new semester with under half the sessions of the one it replaces is still published (the old term has ended), but logs `SMALL_NEW_SEMESTER`, which raises the `…-ingest-small-new-semester` alarm.
+Read `/lectures/current.json`, then use its `path` for `index.json`, `modules.json` (module details, including up to three topics: [title keywords](../backend/jobs/lecture_ingest/topics.py) first, then an [LLM on Bedrock](../backend/jobs/lecture_ingest/llm_topics.py) adds topics from descriptions, cached in `lectures/topic-cache.json`) and `weeks/<label>.json` or `days/<date>.json`. The [publisher](../backend/jobs/lecture_ingest/publish.py) completes the snapshot before switching the pointer. It builds the snapshot in memory and fingerprints it (SHA-256 of every file's path and content, leaving out `generatedAt` and the random folder name). If the fingerprint matches `contentHash` in `current.json`, nothing is written except a new `checkedAt` in `current.json`, so browsers and CloudFront keep their cached files and no duplicate folder is created. `generatedAt` is when the data last changed; Discover shows `checkedAt`, falling back to `generatedAt`. Snapshots use `public, max-age=86400, immutable`; the pointer uses `no-cache`. Empty data is rejected. A re-run of the published semester with under half its sessions is rejected too. A new semester with under half the sessions of the one it replaces is still published (the old term has ended), but logs `SMALL_NEW_SEMESTER`, which raises the `…-ingest-small-new-semester` alarm.
+
+How the fingerprint is computed: one hash for the whole snapshot, not one per file. Keys are file paths relative to the snapshot folder; values are each file's full JSON content.
+
+```text
+{
+  "days/2026-11-10.json": { ...lectures on 10 Nov... },
+  "index.json":           { ...counts, weeks, topics... },
+  "modules.json":         { ...all modules... },
+  ...
+}
+        ↓ json.dumps(sort_keys=True)   sorted keys, so identical data gives identical text
+one long text
+        ↓ sha256
+"378508246529…"   ← the single contentHash stored in current.json
+```
+
+Any change to a lecture, module, topic or the output format, or a file added or removed, changes the hash. It does not say which file changed; only whether anything did.
 
 Fields are defined by the [transformer](../backend/jobs/lecture_ingest/transform.py) and [frontend types](../frontend/src/features/discovery/types.ts). Coordinate format changes across producer, consumers and tests. Unknown capacity uses `size=0`; online or unmapped venues use `building=null`.
 

@@ -48,7 +48,10 @@ def handler(event, context, *, s3=None, now: datetime | None = None) -> dict:
             model_id=model_id,
         )
 
-    result = publish(s3, bucket, semester, sessions, modules, now)
+    # {"force": true} republishes even when the data matches the live snapshot
+    # for manual run
+    force = bool(event.get("force")) if event else False
+    result = publish(s3, bucket, semester, sessions, modules, now, force=force)
     if topic_stats:
         result["llmTopics"] = topic_stats
     logger.info(json.dumps(result))

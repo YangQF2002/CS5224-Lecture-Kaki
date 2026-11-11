@@ -103,7 +103,7 @@ aws lambda invoke --function-name $tf.ingest_function_name.value --cli-read-time
 Get-Content build/ingest-result.json
 ```
 
-Check for `FunctionError` and an `errorMessage` in the result. Scheduled ingestion runs Mondays at 03:00 Singapore time and publishes only in teaching Weeks 1–3 or on the first Monday of the month. Keep complete snapshots for rollback; restore a previous `lectures/current.json` with its matching snapshot path and `no-cache` header. For ingestion alarms, see [Alerts](#alerts).
+Check for `FunctionError` and an `errorMessage` in the result. `"unchanged": true` means the data matched the live snapshot, so only its `checkedAt` was updated; add `force=$true` to the request (`@{date=$ingestDate; force=$true}`) to publish a new snapshot anyway, for example to rebuild a damaged one or apply new cache headers. Scheduled ingestion runs Mondays at 03:00 Singapore time and runs only in teaching Weeks 1–3 or on the first Monday of the month. Keep complete snapshots for rollback; restore a previous `lectures/current.json` with its matching snapshot path and `no-cache` header. For ingestion alarms, see [Alerts](#alerts).
 
 Verify discovery, direct links, login, timetable persistence after refresh and live Forum delivery between two users. A Forum connection should show connected only after readiness acknowledgement and history refresh; a saved message should succeed independently of delivery retries. Check the fan-out Lambda's logs and SNS failure alerts if history works but live events do not. Run another Terraform plan after applying; unexpected drift needs investigation.
 

@@ -1,7 +1,10 @@
 // Shapes of the static lecture snapshot; see docs/architecture.md.
 
 export type LecturePointer = {
+  // When this snapshot was published, i.e. when the data last changed.
   generatedAt: string
+  // When ingestion last confirmed the data; absent before unchanged-run skipping.
+  checkedAt?: string
   acadYear: string
   semester: number
   path: string
