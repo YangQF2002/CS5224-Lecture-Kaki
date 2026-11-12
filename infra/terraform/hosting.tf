@@ -1,5 +1,4 @@
 # Website bucket and CloudFront distribution for the React build and lecture snapshots.
-# Mirrors infra/hosting.yaml.
 
 data "aws_caller_identity" "current" {}
 
