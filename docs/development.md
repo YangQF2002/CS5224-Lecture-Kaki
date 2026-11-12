@@ -4,9 +4,8 @@ Commands use PowerShell from the repository root unless stated otherwise.
 
 ## Prerequisites
 
-- Docker with Compose v2.24+ for containers.
-- Native backend/data generation: Python 3.14.x and Poetry 2.4.1.
-- Native frontend: Node.js 24 LTS, minimum 24.22.1.
+- Backend and data generation: Python 3.14.x and Poetry 2.4.1.
+- Frontend: Node.js 24 LTS, minimum 24.22.1.
 - AWS CLI v2.32.0+ for shared DynamoDB access.
 
 ## AWS access
@@ -43,14 +42,13 @@ The Cognito public client needs code flow, scope `openid` and these callback/log
 | Client          | Callback                                     | Logout                        |
 | --------------- | -------------------------------------------- | ----------------------------- |
 | Vite            | `http://localhost:5173/auth/callback`        | `http://localhost:5173/forum` |
-| Docker frontend | `http://localhost:8080/auth/callback`        | `http://localhost:8080/forum` |
 | API docs        | `http://localhost:8000/docs/oauth2-redirect` | `http://localhost:8000/docs`  |
 
-Use `localhost` consistently. Match frontend URLs and API `FRONTEND_ORIGINS` to the chosen ports. Restart API/Vite after environment changes; rebuild the Docker frontend.
+Use `localhost` consistently. Match frontend URLs and API `FRONTEND_ORIGINS` to the chosen ports. Restart API/Vite after environment changes.
 
 Leave `FORUM_WEBSOCKET_URL` and `FORUM_FANOUT_FUNCTION` empty locally; the API serves live connections in one process. PDF uploads also require S3 permissions described in [deployment](deployment.md#infrastructure-ownership).
 
-## Native development
+## Running locally
 
 API terminal:
 
@@ -94,68 +92,16 @@ For Vite, serve the output in another terminal from `backend/`:
 poetry run python -m http.server 8001 --bind 127.0.0.1 --directory out/ingest
 ```
 
-Vite proxies `/lectures` to port 8001. To use hosted data instead, set `$env:LECTURES_ORIGIN = 'https://<website-host>'` before starting Vite. Docker mounts the generated files directly.
-
-## Docker development
-
-Stop native servers using the same ports. From the repository root, build with frontend configuration:
-
-```powershell
-$env:VITE_COGNITO_REDIRECT_URI = 'http://localhost:8080/auth/callback'
-$env:VITE_COGNITO_LOGOUT_URI = 'http://localhost:8080/forum'
-docker compose --env-file frontend/.env.local up --build -d --wait
-```
-
-Clear those overrides before returning to Vite. Rebuild after source changes; recreate the API after backend configuration changes with `docker compose up -d --force-recreate backend`. Logs: `docker compose logs -f`. Stop: `docker compose down`.
-
-For container DynamoDB access, pass temporary credentials after browser login. Keep host `AWS_PROFILE` and keys out of `backend/.env.local`; the container cannot read the host login cache.
-
-```powershell
-$credentialJson = aws configure export-credentials --profile cs5224-dev --format process
-if ($LASTEXITCODE -ne 0) { throw 'Credential export failed; run aws login and retry.' }
-$temporaryCredentials = $credentialJson | ConvertFrom-Json -ErrorAction Stop
-Remove-Variable credentialJson
-if (-not ($temporaryCredentials.AccessKeyId -and $temporaryCredentials.SecretAccessKey -and $temporaryCredentials.SessionToken)) {
-    throw 'Credential export did not return complete temporary credentials.'
-}
-$previousCredentials = @{
-    AWS_ACCESS_KEY_ID = $env:AWS_ACCESS_KEY_ID
-    AWS_SECRET_ACCESS_KEY = $env:AWS_SECRET_ACCESS_KEY
-    AWS_SESSION_TOKEN = $env:AWS_SESSION_TOKEN
-}
-try {
-    $env:AWS_ACCESS_KEY_ID = $temporaryCredentials.AccessKeyId
-    $env:AWS_SECRET_ACCESS_KEY = $temporaryCredentials.SecretAccessKey
-    $env:AWS_SESSION_TOKEN = $temporaryCredentials.SessionToken
-    docker compose stop backend
-    if ($LASTEXITCODE -ne 0) { throw 'Could not stop the existing backend.' }
-    docker compose run --rm --service-ports -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_SESSION_TOKEN backend
-} finally {
-    foreach ($name in $previousCredentials.Keys) {
-        [Environment]::SetEnvironmentVariable($name, $previousCredentials[$name], 'Process')
-    }
-    Remove-Variable temporaryCredentials, previousCredentials
-}
-```
-
-On credential expiry, stop with Ctrl+C, renew login if needed and rerun the block. Credentials are restored in the host shell on exit. Do not save exported secrets.
+Vite proxies `/lectures` to port 8001. To use hosted data instead, set `$env:LECTURES_ORIGIN = 'https://<website-host>'` before starting Vite.
 
 ## Checks
 
-Container checks from the repository root:
+CI runs the same checks on every pull request.
 
-```powershell
-docker compose run --build --rm backend-test
-docker compose run --build --rm frontend-test sh -c 'npm run lint && npm run format:check -- --end-of-line auto && npm test -- --fileParallelism=false && npm run build'
-python scripts/smoke_test.py
-```
-
-The frontend command accepts Windows line endings and runs test files sequentially. Smoke checks require host Python 3 and both runtime containers running; they do not check Cognito or DynamoDB access.
-
-| Native folder | Checks                                                                                                               |
+| Folder        | Checks                                                                                                               |
 | ------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `backend/`    | `poetry check --lock`; `poetry run ruff check .`; `poetry run ruff format --check .`; `poetry run python -m pytest`. |
-| `frontend/`   | `npm run lint`; `npm run format:check -- --end-of-line auto` (Windows); `npm test`; `npm run build`.                 |
+| `frontend/`   | `npm run lint`; `npm run format:check` (add `-- --end-of-line auto` on Windows); `npm test`; `npm run build`.        |
 
 For live Cognito tests, put fresh `COGNITO_TEST_ACCESS_TOKEN` and `COGNITO_TEST_ID_TOKEN` from the browser Network panel's same `/oauth2/token` response in `backend/.env.local`. From `backend/`, run `poetry run python -m pytest -m cognito tests/integration`, then remove the tokens. Normal tests exclude these live checks.
 

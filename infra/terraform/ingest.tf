@@ -1,4 +1,4 @@
-# Weekly NUSMods ingestion into the website bucket's lectures/ folder. Mirrors infra/ingest.yaml.
+# Weekly NUSMods ingestion into the website bucket's lectures/ folder.
 # Build the package first: python3.14 backend/scripts/package_ingest.py (writes build/ingest.zip).
 
 variable "topic_model_id" {
